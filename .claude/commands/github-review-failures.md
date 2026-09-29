@@ -1,6 +1,6 @@
 ---
 description: "Use when CI checks are failing on a PR — fetches failure logs, diagnoses root causes, implements fixes, pushes until CI is green."
-model: claude-opus-4-7
+model: opus
 argument-hint: "PR number (e.g., 1690 or #1690)"
 allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(gh run view:*), Bash(git log:*), Bash(git diff:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/zazu:*), Read, Write, Edit, Glob, Grep, Agent
 ---

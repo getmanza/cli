@@ -1,6 +1,6 @@
 ---
 description: "Executes full autonomous engineering workflow with verification. Use when implementing complete features, tackling GitHub issues, or running end-to-end development cycles."
-model: claude-opus-4-7
+model: opus
 argument-hint: "GitHub issue number/URL or feature description"
 allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(./dist/zazu:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
 ---
@@ -38,7 +38,7 @@ Use `TaskCreate` to record steps; update with `TaskUpdate` as you go.
 
 ## Phase 2: Explore
 
-1. Find related files (Glob/Grep, or the Explore agent for broad searches).
+1. Find related files (Glob/Grep, or the Explore agent, `model: haiku`, for broad searches).
 2. Read existing patterns in the same area of `bin/zazu.ts`.
 3. Understand which SDK methods to call — the CLI is a thin wrapper over `@getzazu/sdk`.
 4. Check existing test coverage in `test/cli.test.js`.
@@ -124,6 +124,10 @@ bun run compile                      # binary builds
 
 Re-read the original requirements: would the requester consider this fully resolved? Have you addressed the root cause? Do the tests prove the fix?
 
+## Phase 6.5: Fable validation
+
+Spawn the `fable-validator` agent (it is pinned to Fable) with the issue, the acceptance criteria from Phase 1 and the base branch. On **BLOCK**, fix every blocker (back to Phase 4 for code, with a failing test first), re-verify, and run the validator again. On **PASS WITH NOTES**, fix the risks you agree with and list the rest in the pull request under "Accepted risks". Put the validator's one-line verdict and its "Not verified" list in the pull request body. Do not open the pull request before a PASS or PASS WITH NOTES.
+
 ## Phase 7: Commit and PR
 
 **Backticks in PR bodies pass through `<<'EOF'` heredocs verbatim — do NOT escape them with `` \` ``.** See the "PR descriptions" section in `CLAUDE.md`.
@@ -171,6 +175,7 @@ If you typed `` \` `` anywhere in the body, delete the backslash. The single-quo
 - [ ] `bun run check:all` passes.
 - [ ] `bun run compile` produces a working binary.
 - [ ] No hand-rolled HTTP — uses the SDK.
+- [ ] `fable-validator` verdict is PASS or PASS WITH NOTES (Phase 6.5), and it is in the PR body.
 - [ ] PR created with description.
 
 ## Karpathy guidelines (always)
