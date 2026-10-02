@@ -26,7 +26,7 @@ Command-line interface for the Zazu API. Single-file TypeScript source in `bin/z
 | `zazu webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable` | Webhook config |
 | `zazu checkout-sessions create/get` | Hosted checkout sessions |
 | `zazu transfers create/get/authorize/decline/sign` | Transfer drafts; `sign` computes the authorization signature locally from `--secret-env` |
-| `zazu beneficiaries list/get/create`, `beneficiaries accounts list/get/create <beneficiary-id>` | Saved recipients + their external bank accounts |
+| `zazu beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
 | `zazu payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
 | `zazu request <method> <path>` | Escape hatch for raw API calls |
 
