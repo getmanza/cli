@@ -34,11 +34,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Verify tag matches package.json version
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          tag="${GITHUB_REF#refs/tags/v}"
+          tag="${TAG#v}"
           pkg="$(bun -e 'console.log(require("./package.json").version)')"
           if [ "$tag" != "$pkg" ]; then
-            echo "::error::Tag v$tag does not match package.json version $pkg"
+            echo "::error::Tag v$tag does not match package.json version $pkg (bin/release writes it via scripts/version)"
             exit 1
           fi
 

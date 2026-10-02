@@ -284,23 +284,24 @@ zazu webhook-endpoints --help
 
 ## Release
 
-Releases are tag-driven. To cut a release:
+Releases are tag-driven, cut from a clean, up-to-date `main` with `bin/release` (the zazu SDK release kit; repo-specific bits live in `scripts/version` and `scripts/release-check`):
 
-1. Bump `CLI_VERSION` in `bin/zazu.js` and `version` in `package.json` to matching values.
-2. Open a PR with the bump and merge it.
-3. From the merged commit on `main`:
-   ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
-4. The `release.yml` workflow then:
-   - Verifies the tag matches `package.json` version.
-   - Runs the test suite + smoke-tests the compiled binary on the host.
-   - Smoke-tests against the Zazu staging API (read-only happy path).
-   - Cross-compiles all four binaries.
-   - Creates a GitHub Release with auto-generated notes, binaries, and `SHA256SUMS`.
-   - Publishes `@getzazu/cli` plus four per-platform packages (`@getzazu/cli-darwin-arm64`, etc.) to npm.
-   - Bumps the `getzazu/homebrew-tap` formula (gated on `vars.PUBLISH_HOMEBREW == 'true'`).
+```bash
+bin/release list        # last releases + what patch/minor/major would give
+bin/release --dry-run   # version + changes since the last tag, publishes nothing
+bin/release minor       # or patch (default), major, an explicit 0.3.0; --force re-creates
+```
+
+It bumps `package.json`, runs `check:all`, pushes `main` and publishes the GitHub Release (tag `vX.Y.Z`).
+
+The `release.yml` workflow then:
+- Verifies the tag matches `package.json` version.
+- Runs the test suite + smoke-tests the compiled binary on the host.
+- Smoke-tests against the Zazu staging API (read-only happy path).
+- Cross-compiles all four binaries.
+- Creates a GitHub Release with auto-generated notes, binaries, and `SHA256SUMS`.
+- Publishes `@getzazu/cli` plus four per-platform packages (`@getzazu/cli-darwin-arm64`, etc.) to npm.
+- Bumps the `getzazu/homebrew-tap` formula (gated on `vars.PUBLISH_HOMEBREW == 'true'`).
 
 Pre-release local check:
 

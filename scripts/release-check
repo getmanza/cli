@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# bin/release adapter: must pass before the version bump is committed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+bun install --frozen-lockfile
+bun run check:all
+bun run check   # bundle check, as in CI
