@@ -4,7 +4,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { Page, type PageBody, type RequestOptions, Zazu, ZazuError } from "@getzazu/sdk";
+import {
+  Page,
+  type PageBody,
+  type RequestOptions,
+  TransferAuthorization,
+  Zazu,
+  ZazuConflictError,
+  ZazuError,
+  type ZazuResponse,
+} from "@getzazu/sdk";
 // Bun's bundler inlines JSON imports at compile time, so `bun build
 // --compile` produces a self-contained binary that already knows the
 // version — no runtime read required. Source-of-truth is package.json
@@ -12,7 +21,7 @@ import { Page, type PageBody, type RequestOptions, Zazu, ZazuError } from "@getz
 import packageJson from "../package.json" with { type: "json" };
 
 const CLI_VERSION = packageJson.version;
-const DEFAULT_BASE_URL = "https://zazu.ma";
+const DEFAULT_BASE_URL = "https://ma.manza.finance";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 const FORMATS = new Set(["json", "pretty", "raw"]);
 const LIST_PAGE_SIZE = 100;
@@ -104,11 +113,21 @@ Commands:
   zazu payment-links create [--data json|--file path|--stdin] [payment link flags]
   zazu payment-links cancel <id>
 
-  zazu transfers create [--data json|--file path|--stdin] [transfer flags]
+  zazu transfers create [--data json|--file path|--stdin] [transfer flags] [--client-reference ref]
   zazu transfers get <id>
+  zazu transfers authorize <id> --authorization-id <id> --signature <hex>
+  zazu transfers decline <id> --authorization-id <id> [--reason text]
+  zazu transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
 
   zazu beneficiaries list [--limit n] [--cursor value] [--all|--max-items n]
   zazu beneficiaries get <id>
+  zazu beneficiaries create [--data json|--file path|--stdin] [beneficiary flags]
+  zazu beneficiaries accounts list <beneficiary-id> [--limit n] [--cursor value] [--all|--max-items n]
+  zazu beneficiaries accounts get <beneficiary-id> <account-id>
+  zazu beneficiaries accounts create <beneficiary-id> [--data json|--file path|--stdin] [account flags]
+
+  zazu payee-trust-requests create --external-account-id <id> [--external-account-id <id> ...]
+  zazu payee-trust-requests get <id>
 
   zazu webhook-endpoints list [--limit n] [--cursor value] [--all|--max-items n]
   zazu webhook-endpoints get <id>
@@ -198,21 +217,46 @@ Usage:
 `,
   transfers: `Zazu CLI - transfers
 
-Creating a transfer routes it into your workspace's in-app approval flow —
-the API never executes a transfer itself. Poll \`get\` (requested →
-processing → completed/failed) or use the transfer.executed webhook.
+Creating a transfer never executes it by itself. A draft inside your
+machine-authorization envelope (trusted payee, within limits) is sent to
+the enrolled authorizer as a payment.authorization_requested webhook;
+answer it with \`authorize\` or \`decline\`, using an API key other than
+the one that created the draft. Every other draft goes to the in-app
+approval flow. Poll \`get\` (requested → processing → completed/failed)
+or use the transfer.executed webhook.
+
+\`sign\` computes the authorization signature locally. It reads the
+signing secret from the environment variable named by --secret-env and
+never takes the secret as an argument.
 
 Usage:
-  zazu transfers create [--data json|--file path|--stdin] [--account-id id] [--beneficiary-id id|--destination-account-id id] [--amount amount] [--payment-reference ref] [--external-account-id id] [--currency-code code] [--internal-notes text]
+  zazu transfers create [--data json|--file path|--stdin] [--account-id id] [--beneficiary-id id|--destination-account-id id] [--amount amount] [--payment-reference ref] [--external-account-id id] [--currency-code code] [--internal-notes text] [--client-reference ref]
   zazu transfers get <id>
+  zazu transfers authorize <id> --authorization-id <id> --signature <hex>
+  zazu transfers decline <id> --authorization-id <id> [--reason text]
+  zazu transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
 `,
   beneficiaries: `Zazu CLI - beneficiaries
 
-Read-only directory of saved transfer recipients (managed in the dashboard).
+Saved transfer recipients and their bank accounts. There is no update or
+delete via the API.
 
 Usage:
   zazu beneficiaries list [--limit n] [--cursor value] [--all|--max-items n]
   zazu beneficiaries get <id>
+  zazu beneficiaries create [--data json|--file path|--stdin] [--beneficiary-type individual|business] [--person-name value] [--company-name value] [--email value] [--phone-number value]
+  zazu beneficiaries accounts list <beneficiary-id> [--limit n] [--cursor value] [--all|--max-items n]
+  zazu beneficiaries accounts get <beneficiary-id> <account-id>
+  zazu beneficiaries accounts create <beneficiary-id> [--data json|--file path|--stdin] [--account-number value] [--name value] [--country-code value] [--currency-code value] [--account-type bank] [--bank-identifier value]
+`,
+  "payee-trust-requests": `Zazu CLI - payee-trust-requests
+
+Ask to trust payees for machine-authorized transfers. A member with
+payment-authorize permission approves the request in the app.
+
+Usage:
+  zazu payee-trust-requests create --external-account-id <id> [--external-account-id <id> ...]
+  zazu payee-trust-requests get <id>
 `,
   request: `Zazu CLI - request
 
@@ -306,6 +350,11 @@ async function main() {
     throw new CliError(`Invalid output format "${config.output}". Use json, pretty, or raw.`);
   }
 
+  if (isTransferResource(parsed.positionals[0]) && parsed.positionals[1] === "sign") {
+    await signTransferAuthorization(parsed.flags, config);
+    return;
+  }
+
   const request = buildRequest(parsed.positionals, parsed.flags);
   await send(config, request);
 }
@@ -387,7 +436,10 @@ function buildRequest(positionals, flags) {
     case "transfer_drafts":
       return transferDraftRequest(command, arg, flags);
     case "beneficiaries":
-      return beneficiaryRequest(command, arg, flags);
+      return beneficiaryRequest(positionals.slice(1), flags);
+    case "payee-trust-requests":
+    case "payee_trust_requests":
+      return payeeTrustRequestRequest(command, arg, flags);
     case "webhook-endpoints":
     case "webhook_endpoints":
       return webhookEndpointRequest(command, arg, flags);
@@ -564,6 +616,8 @@ function paymentLinkRequest(command, id, flags) {
   }
 }
 
+// Transfers, beneficiaries, and payee trust requests call the typed SDK
+// resource methods through `call`; `method`/`path` stay for --debug.
 function transferDraftRequest(command, id, flags) {
   switch (command) {
     case "create":
@@ -571,25 +625,144 @@ function transferDraftRequest(command, id, flags) {
         method: "POST",
         path: "/api/transfer_drafts",
         body: bodyFromFlags(flags, transferDraftBody(flags)),
+        call: (client: Zazu, { body }) => client.transferDrafts.create(body),
       };
     case "get":
       requireValue(id, "transfer draft id");
-      return { method: "GET", path: `/api/transfer_drafts/${encodeURIComponent(id)}` };
+      return {
+        method: "GET",
+        path: `/api/transfer_drafts/${encodeURIComponent(id)}`,
+        call: (client: Zazu) => client.transferDrafts.get(id),
+      };
+    case "authorize": {
+      requireValue(id, "transfer draft id");
+      const authorizationId = flags["authorization-id"];
+      const signature = flags.signature;
+      requireValue(authorizationId, "authorization id. Use --authorization-id <id>");
+      requireValue(signature, "signature. Use --signature <hex>");
+      return {
+        method: "POST",
+        path: `/api/transfer_drafts/${encodeURIComponent(id)}/authorize`,
+        call: (client: Zazu) =>
+          client.transferDrafts.authorize(id, {
+            authorization_id: String(authorizationId),
+            signature: String(signature),
+          }),
+      };
+    }
+    case "decline": {
+      requireValue(id, "transfer draft id");
+      const authorizationId = flags["authorization-id"];
+      requireValue(authorizationId, "authorization id. Use --authorization-id <id>");
+      const reason = flags.reason === undefined ? undefined : String(flags.reason);
+      return {
+        method: "POST",
+        path: `/api/transfer_drafts/${encodeURIComponent(id)}/decline`,
+        call: (client: Zazu) =>
+          client.transferDrafts.decline(id, { authorization_id: String(authorizationId), reason }),
+      };
+    }
     default:
-      throw new CliError("Usage: zazu transfers create|get");
+      throw new CliError("Usage: zazu transfers create|get|authorize|decline|sign");
   }
 }
 
-function beneficiaryRequest(command, id, flags) {
+function beneficiaryRequest(args, flags) {
+  const [command, id] = args;
+
   switch (command) {
     case "list":
-      return listRequest("/api/beneficiaries", pick(flags, ["cursor", "limit"]), flags);
+      return {
+        ...listRequest("/api/beneficiaries", pick(flags, ["cursor", "limit"]), flags),
+        call: (client: Zazu, { query }) => client.beneficiaries.list(listParams(query)),
+      };
     case "get":
       requireValue(id, "beneficiary id");
-      return { method: "GET", path: `/api/beneficiaries/${encodeURIComponent(id)}` };
+      return {
+        method: "GET",
+        path: `/api/beneficiaries/${encodeURIComponent(id)}`,
+        call: (client: Zazu) => client.beneficiaries.get(id),
+      };
+    case "create":
+      return {
+        method: "POST",
+        path: "/api/beneficiaries",
+        body: bodyFromFlags(flags, beneficiaryBody(flags)),
+        call: (client: Zazu, { body }) => client.beneficiaries.create(body),
+      };
+    case "accounts":
+    case "external-accounts":
+    case "external_accounts":
+      return beneficiaryAccountRequest(args.slice(1), flags);
     default:
-      throw new CliError("Usage: zazu beneficiaries list|get");
+      throw new CliError("Usage: zazu beneficiaries list|get|create|accounts");
   }
+}
+
+function beneficiaryAccountRequest(args, flags) {
+  const [command, beneficiaryId, id] = args;
+  const basePath = `/api/beneficiaries/${encodeURIComponent(beneficiaryId)}/external_accounts`;
+
+  switch (command) {
+    case "list":
+      requireValue(beneficiaryId, "beneficiary id");
+      return {
+        ...listRequest(basePath, pick(flags, ["cursor", "limit"]), flags),
+        call: (client: Zazu, { query }) =>
+          client.beneficiaries.listExternalAccounts(beneficiaryId, listParams(query)),
+      };
+    case "get":
+      requireValue(beneficiaryId, "beneficiary id");
+      requireValue(id, "external account id");
+      return {
+        method: "GET",
+        path: `${basePath}/${encodeURIComponent(id)}`,
+        call: (client: Zazu) => client.beneficiaries.getExternalAccount(beneficiaryId, id),
+      };
+    case "create":
+      requireValue(beneficiaryId, "beneficiary id");
+      return {
+        method: "POST",
+        path: basePath,
+        body: bodyFromFlags(flags, externalAccountBody(flags)),
+        call: (client: Zazu, { body }) =>
+          client.beneficiaries.createExternalAccount(beneficiaryId, body),
+      };
+    default:
+      throw new CliError("Usage: zazu beneficiaries accounts list|get|create <beneficiary-id>");
+  }
+}
+
+function payeeTrustRequestRequest(command, id, flags) {
+  switch (command) {
+    case "create": {
+      const externalAccountIds = arrayify(flags["external-account-id"]).map(String);
+      requireValue(externalAccountIds[0], "external account id. Use --external-account-id <id>");
+      return {
+        method: "POST",
+        path: "/api/payee_trust_requests",
+        call: (client: Zazu) =>
+          client.payeeTrustRequests.create({ external_account_ids: externalAccountIds }),
+      };
+    }
+    case "get":
+      requireValue(id, "payee trust request id");
+      return {
+        method: "GET",
+        path: `/api/payee_trust_requests/${encodeURIComponent(id)}`,
+        call: (client: Zazu) => client.payeeTrustRequests.get(id),
+      };
+    default:
+      throw new CliError("Usage: zazu payee-trust-requests create|get");
+  }
+}
+
+// The SDK's list methods take a numeric limit; flags arrive as strings.
+function listParams(query) {
+  return {
+    limit: query?.limit === undefined ? undefined : Number(query.limit),
+    cursor: query?.cursor,
+  };
 }
 
 function webhookEndpointRequest(command, id, flags) {
@@ -753,6 +926,22 @@ function transferDraftBody(flags) {
     "currency-code",
     "payment-reference",
     "internal-notes",
+    "client-reference",
+  ]);
+}
+
+function beneficiaryBody(flags) {
+  return pick(flags, ["beneficiary-type", "person-name", "company-name", "email", "phone-number"]);
+}
+
+function externalAccountBody(flags) {
+  return pick(flags, [
+    "account-number",
+    "name",
+    "country-code",
+    "currency-code",
+    "account-type",
+    "bank-identifier",
   ]);
 }
 
@@ -987,10 +1176,61 @@ async function fetchRequest(config, request) {
     console.error(`${request.method} ${url.toString()}`);
   }
 
+  if (request.call) {
+    const result = await request.call(clientFor(config), {
+      query: request.query,
+      body: resolvedBody ?? {},
+    });
+    return result instanceof Page ? (result.response as ZazuResponse) : result;
+  }
+
   const opts: RequestOptions = { params: request.query };
   if (hasBody) opts.body = resolvedBody;
 
   return clientFor(config).request(request.method, path, opts);
+}
+
+async function signTransferAuthorization(flags, config) {
+  if (flags.secret !== undefined) {
+    throw new CliError(
+      "Never pass the signing secret as an argument. Put it in an environment variable and use --secret-env <VAR>.",
+    );
+  }
+
+  const secretEnv = flags["secret-env"];
+  requireValue(secretEnv, "secret env var. Use --secret-env <VAR>");
+  const secret = process.env[String(secretEnv)];
+  if (!secret) {
+    throw new CliError(`Environment variable ${secretEnv} is not set.`);
+  }
+
+  for (const name of ["payment-id", "nonce", "amount", "currency-code", "account-id"]) {
+    requireValue(flags[name], `--${name}`);
+  }
+
+  try {
+    const signatureInput = TransferAuthorization.signatureInput({
+      payment_id: String(flags["payment-id"]),
+      nonce: String(flags.nonce),
+      amount: String(flags.amount),
+      currency_code: String(flags["currency-code"]),
+      account_id: String(flags["account-id"]),
+      payee: TransferAuthorization.payeeFor({
+        external_account_id: optionalString(flags["external-account-id"]),
+        destination_account_id: optionalString(flags["destination-account-id"]),
+      }),
+      client_reference: optionalString(flags["client-reference"]),
+    });
+    const signature = await TransferAuthorization.sign({ secret, signature_input: signatureInput });
+    printOutput({ signature, signature_input: signatureInput }, config);
+  } catch (error) {
+    if (error instanceof ZazuError) throw new CliError(error.message);
+    throw error;
+  }
+}
+
+function optionalString(value) {
+  return value === undefined ? undefined : String(value);
 }
 
 function buildURL(baseURL, path, query = {}) {
@@ -1043,6 +1283,7 @@ function printError(error: ZazuError, format) {
     ? { ...body }
     : { error: { message: error.message, type: error.type, param: error.param } };
   payload.status = error.status;
+  if (error instanceof ZazuConflictError && error.paymentId) payload.payment_id = error.paymentId;
   if (error.requestId) payload.request_id = error.requestId;
   const zazuVersion = error.headers?.get("zazu-version");
   if (zazuVersion) payload.zazu_version = zazuVersion;
@@ -1228,6 +1469,10 @@ function outputFormat(globals) {
   if (globals.pretty) return "pretty";
   if (globals.json) return "json";
   return globals.output || globals.format || "json";
+}
+
+function isTransferResource(resource) {
+  return ["transfers", "transfer-drafts", "transfer_drafts"].includes(resource);
 }
 
 function isLocalCommand(resource) {

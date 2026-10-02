@@ -2,7 +2,7 @@
 
 Command-line interface for the Zazu API.
 
-The CLI defaults to Morocco production at `https://zazu.ma`. Use `--base-url` or `ZAZU_BASE_URL` only when Zazu gives you a different API host.
+The CLI defaults to Morocco production at `https://ma.manza.finance`. Use `--base-url` or `ZAZU_BASE_URL` only when Zazu gives you a different API host.
 
 ## Install
 
@@ -11,7 +11,7 @@ The CLI ships as a single self-contained binary that bundles the Bun runtime —
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew install getzazu/tap/zazu
+brew install getmanza/tap/zazu
 zazu --version
 ```
 
@@ -26,7 +26,7 @@ The npm package is a thin shim that selects the correct platform binary via `opt
 
 ### Direct download
 
-Grab a prebuilt binary from the [latest GitHub Release](https://github.com/getzazu/cli/releases/latest):
+Grab a prebuilt binary from the [latest GitHub Release](https://github.com/getmanza/cli/releases/latest):
 
 ```bash
 chmod +x zazu-darwin-arm64
@@ -108,7 +108,7 @@ Optional environment variables:
 | Variable | Description |
 | --- | --- |
 | `ZAZU_API_KEY` | API bearer token |
-| `ZAZU_BASE_URL` | API host, defaults to `https://zazu.ma` |
+| `ZAZU_BASE_URL` | API host, defaults to `https://ma.manza.finance` |
 | `ZAZU_VERSION` | Optional `Zazu-Version` header |
 | `ZAZU_TIMEOUT_MS` | Request timeout in milliseconds, defaults to `30000` |
 
@@ -117,7 +117,7 @@ Global flags:
 ```text
 --api-key <key>       API bearer token
 --api-key-stdin       Read API key from stdin for zazu login
---base-url <url>      API host, defaults to https://zazu.ma
+--base-url <url>      API host, defaults to https://ma.manza.finance
 --api-version <date>  Zazu-Version header
 --timeout-ms <ms>     Request timeout in milliseconds
 --output <format>     json, pretty, or raw
@@ -144,8 +144,8 @@ zazu config unset api-version
 Production API hosts:
 
 ```text
-Morocco production      https://zazu.ma
-South Africa production https://zazu.africa
+Morocco production      https://ma.manza.finance
+South Africa production https://za.manza.finance
 ```
 
 ## Examples
@@ -272,6 +272,22 @@ zazu webhook-endpoints disable <id>
 zazu checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
 zazu checkout-sessions get <id>
 
+zazu transfers create [--data json|--file path|--stdin] [transfer flags] [--client-reference ref]
+zazu transfers get <id>
+zazu transfers authorize <id> --authorization-id <id> --signature <hex>
+zazu transfers decline <id> --authorization-id <id> [--reason text]
+zazu transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
+
+zazu beneficiaries list [--limit n] [--cursor value] [--all|--max-items n]
+zazu beneficiaries get <id>
+zazu beneficiaries create [--data json|--file path|--stdin] [beneficiary flags]
+zazu beneficiaries accounts list <beneficiary-id> [--limit n] [--cursor value] [--all|--max-items n]
+zazu beneficiaries accounts get <beneficiary-id> <account-id>
+zazu beneficiaries accounts create <beneficiary-id> [--data json|--file path|--stdin] [account flags]
+
+zazu payee-trust-requests create --external-account-id <id> [--external-account-id <id> ...]
+zazu payee-trust-requests get <id>
+
 zazu request <method> <path> [--data json|--file path|--stdin] [--query key=value]
 ```
 
@@ -301,7 +317,7 @@ The `release.yml` workflow then:
 - Cross-compiles all four binaries.
 - Creates a GitHub Release with auto-generated notes, binaries, and `SHA256SUMS`.
 - Publishes `@getzazu/cli` plus four per-platform packages (`@getzazu/cli-darwin-arm64`, etc.) to npm.
-- Bumps the `getzazu/homebrew-tap` formula (gated on `vars.PUBLISH_HOMEBREW == 'true'`).
+- Bumps the `getmanza/homebrew-tap` formula (gated on `vars.PUBLISH_HOMEBREW == 'true'`).
 
 Pre-release local check:
 

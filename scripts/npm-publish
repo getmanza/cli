@@ -68,10 +68,10 @@ for arch in "${!PLATFORMS[@]}"; do
   "version": "${VERSION}",
   "description": "Zazu CLI binary for ${arch}",
   "license": "MIT",
-  "homepage": "https://github.com/getzazu/cli",
+  "homepage": "https://github.com/getmanza/cli",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getzazu/cli.git"
+    "url": "git+https://github.com/getmanza/cli.git"
   },
   "os": ["${os}"],
   "cpu": ["${cpu}"],
@@ -110,12 +110,12 @@ cat > "${parent_dir}/package.json" <<JSON
   "version": "${VERSION}",
   "description": "Command-line interface for the Zazu API",
   "license": "MIT",
-  "homepage": "https://github.com/getzazu/cli#readme",
+  "homepage": "https://github.com/getmanza/cli#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getzazu/cli.git"
+    "url": "git+https://github.com/getmanza/cli.git"
   },
-  "bugs": { "url": "https://github.com/getzazu/cli/issues" },
+  "bugs": { "url": "https://github.com/getmanza/cli/issues" },
   "keywords": ["zazu", "cli", "api", "invoices", "payments"],
   "bin": { "zazu": "bin/zazu.js" },
   "files": ["bin"],
