@@ -24,6 +24,10 @@ Command-line interface for the Zazu API. Single-file TypeScript source in `bin/z
 | `zazu invoices list/get/create/update/send/mark-as-paid/cancel/credit-note/delete/payment-link` | Invoice ops |
 | `zazu payment-links list/get/create/cancel` | Payment-link ops |
 | `zazu webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable` | Webhook config |
+| `zazu checkout-sessions create/get` | Hosted checkout sessions |
+| `zazu transfers create/get/authorize/decline/sign` | Transfer drafts; `sign` computes the authorization signature locally from `--secret-env` |
+| `zazu beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
+| `zazu payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
 | `zazu request <method> <path>` | Escape hatch for raw API calls |
 
 Global flags: `--api-key`, `--api-key-stdin`, `--base-url`, `--api-version`, `--timeout-ms`, `--format` (json/pretty/raw), `--output`, `--debug`, `--help`, `--version`, `--quiet`. List flags add `--all`, `--cursor`, `--limit`, `--max-items`.

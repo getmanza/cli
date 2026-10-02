@@ -4,13 +4,13 @@
   "description": "Command-line interface for the Zazu API.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/getzazu/cli#readme",
+  "homepage": "https://github.com/getmanza/cli#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getzazu/cli.git"
+    "url": "git+https://github.com/getmanza/cli.git"
   },
   "bugs": {
-    "url": "https://github.com/getzazu/cli/issues"
+    "url": "https://github.com/getmanza/cli/issues"
   },
   "keywords": [
     "zazu",
@@ -60,6 +60,6 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
-    "@getzazu/sdk": "^0.2.0"
+    "@getzazu/sdk": "^0.3.0"
   }
 }

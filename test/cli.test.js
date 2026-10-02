@@ -64,7 +64,7 @@ test("login still accepts --api-key for backwards compatibility", async () => {
     assert.deepEqual(JSON.parse(login.stdout), {
       ok: true,
       api_key: "sk_live_...7890",
-      base_url: "https://zazu.ma",
+      base_url: "https://ma.manza.finance",
     });
   } finally {
     await rm(configHome, { recursive: true, force: true });
@@ -150,7 +150,7 @@ test("login accepts test API keys", async () => {
     assert.deepEqual(JSON.parse(login.stdout), {
       ok: true,
       api_key: "sk_test_...7890",
-      base_url: "https://zazu.ma",
+      base_url: "https://ma.manza.finance",
     });
   } finally {
     await rm(configHome, { recursive: true, force: true });
@@ -391,6 +391,10 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
       url: req.url,
       body: await readRequestBody(req),
     });
+    if (req.url.startsWith("/api/beneficiaries?")) {
+      sendJSON(res, { data: [], has_more: false, next_cursor: null });
+      return;
+    }
     sendJSON(res, { ok: true });
   });
 
@@ -411,6 +415,8 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
         "150.00",
         "--payment-reference",
         "INV-001",
+        "--client-reference",
+        "po_1",
       ],
       { configHome },
     );
@@ -456,6 +462,7 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
           beneficiary_id: "ben_123",
           amount: "150.00",
           payment_reference: "INV-001",
+          client_reference: "po_1",
         }),
       },
       { method: "GET", url: "/api/transfer_drafts/td_123", body: "" },
@@ -662,13 +669,466 @@ test("checkout session commands map to the API endpoints", async () => {
   }
 });
 
-async function runCli(args, { configHome, reject = true } = {}) {
+test("beneficiary create and external account commands map to the API endpoints", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer(async (req, res) => {
+    requests.push({ method: req.method, url: req.url, body: await readRequestBody(req) });
+    if (req.method === "GET" && req.url.includes("?")) {
+      sendJSON(res, { data: [], has_more: false, next_cursor: null });
+      return;
+    }
+    sendJSON(res, { ok: true });
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    await runCli(
+      [
+        ...api,
+        "beneficiaries",
+        "create",
+        "--beneficiary-type",
+        "business",
+        "--company-name",
+        "Acme SARL",
+        "--email",
+        "ap@acme.test",
+        "--phone-number",
+        "+212600000000",
+      ],
+      { configHome },
+    );
+    await runCli([...api, "beneficiaries", "accounts", "list", "ben_123", "--limit", "5"], {
+      configHome,
+    });
+    await runCli([...api, "beneficiaries", "accounts", "get", "ben_123", "ext_456"], {
+      configHome,
+    });
+    await runCli(
+      [
+        ...api,
+        "beneficiaries",
+        "accounts",
+        "create",
+        "ben_123",
+        "--account-number",
+        "007780000000000000000012",
+        "--name",
+        "Main",
+        "--country-code",
+        "MA",
+        "--currency-code",
+        "MAD",
+      ],
+      { configHome },
+    );
+
+    assert.deepEqual(requests, [
+      {
+        method: "POST",
+        url: "/api/beneficiaries",
+        body: JSON.stringify({
+          beneficiary_type: "business",
+          company_name: "Acme SARL",
+          email: "ap@acme.test",
+          phone_number: "+212600000000",
+        }),
+      },
+      { method: "GET", url: "/api/beneficiaries/ben_123/external_accounts?limit=5", body: "" },
+      { method: "GET", url: "/api/beneficiaries/ben_123/external_accounts/ext_456", body: "" },
+      {
+        method: "POST",
+        url: "/api/beneficiaries/ben_123/external_accounts",
+        body: JSON.stringify({
+          account_number: "007780000000000000000012",
+          name: "Main",
+          country_code: "MA",
+          currency_code: "MAD",
+        }),
+      },
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("beneficiary external accounts list follows cursors with --all", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer((req, res) => {
+    requests.push(req.url);
+    if (req.url === "/api/beneficiaries/ben_123/external_accounts?limit=100") {
+      sendJSON(res, { data: [{ id: "ext_1" }], has_more: true, next_cursor: "c2" });
+      return;
+    }
+    sendJSON(res, { data: [{ id: "ext_2" }], has_more: false, next_cursor: null });
+  });
+
+  try {
+    const result = await runCli(
+      [
+        "--api-key",
+        "sk_live_test",
+        "--base-url",
+        server.baseURL,
+        "beneficiaries",
+        "accounts",
+        "list",
+        "ben_123",
+        "--all",
+      ],
+      { configHome },
+    );
+
+    assert.deepEqual(JSON.parse(result.stdout), {
+      data: [{ id: "ext_1" }, { id: "ext_2" }],
+      has_more: false,
+      next_cursor: null,
+    });
+    assert.deepEqual(requests, [
+      "/api/beneficiaries/ben_123/external_accounts?limit=100",
+      "/api/beneficiaries/ben_123/external_accounts?limit=100&cursor=c2",
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfer authorize and decline map to the API endpoints", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer(async (req, res) => {
+    requests.push({ method: req.method, url: req.url, body: await readRequestBody(req) });
+    sendJSON(res, { id: "auth_1", status: "authorized" });
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    const authorize = await runCli(
+      [
+        ...api,
+        "transfers",
+        "authorize",
+        "td_123",
+        "--authorization-id",
+        "auth_1",
+        "--signature",
+        "abc123",
+      ],
+      { configHome },
+    );
+    assert.deepEqual(JSON.parse(authorize.stdout), { id: "auth_1", status: "authorized" });
+
+    await runCli(
+      [
+        ...api,
+        "transfers",
+        "decline",
+        "td_123",
+        "--authorization-id",
+        "auth_1",
+        "--reason",
+        "not mine",
+      ],
+      { configHome },
+    );
+    await runCli([...api, "transfers", "decline", "td_124", "--authorization-id", "auth_2"], {
+      configHome,
+    });
+
+    assert.deepEqual(requests, [
+      {
+        method: "POST",
+        url: "/api/transfer_drafts/td_123/authorize",
+        body: JSON.stringify({ authorization_id: "auth_1", signature: "abc123" }),
+      },
+      {
+        method: "POST",
+        url: "/api/transfer_drafts/td_123/decline",
+        body: JSON.stringify({ authorization_id: "auth_1", reason: "not mine" }),
+      },
+      {
+        method: "POST",
+        url: "/api/transfer_drafts/td_124/decline",
+        body: JSON.stringify({ authorization_id: "auth_2" }),
+      },
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfer authorize requires --authorization-id and --signature", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const noSignature = await runCli(
+      [
+        "--api-key",
+        "sk_live_test",
+        "transfers",
+        "authorize",
+        "td_123",
+        "--authorization-id",
+        "auth_1",
+      ],
+      { configHome, reject: false },
+    );
+    assert.equal(noSignature.code, 1);
+    assert.match(noSignature.stderr, /Missing signature/);
+
+    const authorizeNoAuthorization = await runCli(
+      ["--api-key", "sk_live_test", "transfers", "authorize", "td_123", "--signature", "abc123"],
+      { configHome, reject: false },
+    );
+    assert.equal(authorizeNoAuthorization.code, 1);
+    assert.match(authorizeNoAuthorization.stderr, /Missing authorization id/);
+
+    const noAuthorization = await runCli(
+      ["--api-key", "sk_live_test", "transfers", "decline", "td_123"],
+      { configHome, reject: false },
+    );
+    assert.equal(noAuthorization.code, 1);
+    assert.match(noAuthorization.stderr, /Missing authorization id/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("a duplicate client reference prints the existing payment_id", async () => {
+  const configHome = await tempConfigHome();
+  const server = await createServer((_req, res) => {
+    sendJSON(
+      res,
+      {
+        error: {
+          type: "duplicate_client_reference",
+          message: "client_reference has already been used",
+          payment_id: "td_existing",
+        },
+      },
+      409,
+    );
+  });
+
+  try {
+    const result = await runCli(
+      [
+        "--api-key",
+        "sk_live_test",
+        "--base-url",
+        server.baseURL,
+        "transfers",
+        "create",
+        "--account-id",
+        "acc_123",
+        "--beneficiary-id",
+        "ben_123",
+        "--amount",
+        "10.00",
+        "--client-reference",
+        "po_1",
+      ],
+      { configHome, reject: false },
+    );
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, "");
+    const payload = JSON.parse(result.stderr);
+    assert.equal(payload.status, 409);
+    assert.equal(payload.payment_id, "td_existing");
+    assert.equal(payload.error.type, "duplicate_client_reference");
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("payee trust request commands map to the API endpoints", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer(async (req, res) => {
+    requests.push({ method: req.method, url: req.url, body: await readRequestBody(req) });
+    sendJSON(res, { id: "ptr_1", status: "pending" });
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    await runCli(
+      [
+        ...api,
+        "payee-trust-requests",
+        "create",
+        "--external-account-id",
+        "ext_1",
+        "--external-account-id",
+        "ext_2",
+      ],
+      { configHome },
+    );
+    await runCli([...api, "payee-trust-requests", "create", "--external-account-id", "ext_3"], {
+      configHome,
+    });
+    await runCli([...api, "payee-trust-requests", "get", "ptr_1"], { configHome });
+
+    assert.deepEqual(requests, [
+      {
+        method: "POST",
+        url: "/api/payee_trust_requests",
+        body: JSON.stringify({ external_account_ids: ["ext_1", "ext_2"] }),
+      },
+      {
+        method: "POST",
+        url: "/api/payee_trust_requests",
+        body: JSON.stringify({ external_account_ids: ["ext_3"] }),
+      },
+      { method: "GET", url: "/api/payee_trust_requests/ptr_1", body: "" },
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("payee trust request create requires an external account id", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const result = await runCli(["--api-key", "sk_live_test", "payee-trust-requests", "create"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Missing external account id/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+// Shared vector from zazu-ruby spec/zazu/transfer_authorization_spec.rb.
+const SIGN_FIELDS = [
+  "--payment-id",
+  "0199a1b2-0000-7000-8000-000000000001",
+  "--nonce",
+  "n0nce-0123456789abcdef",
+  "--amount",
+  "2500.0",
+  "--currency-code",
+  "MAD",
+  "--account-id",
+  "0199a1b2-0000-7000-8000-000000000002",
+];
+
+test("transfers sign reproduces the shared signer vector without an API key", async () => {
+  const configHome = await tempConfigHome();
+  const env = { AUTHORIZER_SECRET: "whsec_test_vector_secret" };
+
+  try {
+    const external = await runCli(
+      [
+        "transfers",
+        "sign",
+        "--secret-env",
+        "AUTHORIZER_SECRET",
+        ...SIGN_FIELDS,
+        "--external-account-id",
+        "0199a1b2-0000-7000-8000-000000000003",
+        "--client-reference",
+        "po_1",
+      ],
+      { configHome, env },
+    );
+    assert.deepEqual(JSON.parse(external.stdout), {
+      signature: "6e8eaec0f89a4eb3b22df1133b3d6dfebfa8505c34c58ed0ff192516e4223078",
+      signature_input:
+        "manza.transfer-authorization.v1|0199a1b2-0000-7000-8000-000000000001|n0nce-0123456789abcdef|2500.0|MAD|0199a1b2-0000-7000-8000-000000000002|ext:0199a1b2-0000-7000-8000-000000000003|po_1",
+    });
+
+    const own = await runCli(
+      [
+        "transfers",
+        "sign",
+        "--secret-env",
+        "AUTHORIZER_SECRET",
+        ...SIGN_FIELDS,
+        "--destination-account-id",
+        "0199a1b2-0000-7000-8000-000000000004",
+      ],
+      { configHome, env },
+    );
+    assert.equal(
+      JSON.parse(own.stdout).signature,
+      "af9440b1de1bebb51f381ce43e3d0d27b6a4ccb99dcd548c0b5435ff4fdd1895",
+    );
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfers sign refuses a missing secret and a plain --secret argument", async () => {
+  const configHome = await tempConfigHome();
+  const payee = ["--external-account-id", "ext_1"];
+
+  try {
+    const unset = await runCli(
+      ["transfers", "sign", "--secret-env", "NOPE_UNSET_VAR", ...SIGN_FIELDS, ...payee],
+      { configHome, reject: false },
+    );
+    assert.equal(unset.code, 1);
+    assert.match(unset.stderr, /NOPE_UNSET_VAR is not set/);
+
+    const plain = await runCli(
+      ["transfers", "sign", "--secret", "whsec_test_vector_secret", ...SIGN_FIELDS, ...payee],
+      { configHome, reject: false },
+    );
+    assert.equal(plain.code, 1);
+    assert.match(plain.stderr, /--secret-env/);
+    assert.doesNotMatch(plain.stdout, /signature/);
+
+    const bothPayees = await runCli(
+      [
+        "transfers",
+        "sign",
+        "--secret-env",
+        "AUTHORIZER_SECRET",
+        ...SIGN_FIELDS,
+        ...payee,
+        "--destination-account-id",
+        "acc_2",
+      ],
+      { configHome, reject: false, env: { AUTHORIZER_SECRET: "s" } },
+    );
+    assert.equal(bothPayees.code, 1);
+    assert.match(bothPayees.stderr, /exactly one of/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("payee-trust-requests help lists its commands", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const result = await runCli(["payee-trust-requests", "--help"], { configHome });
+    assert.match(result.stdout, /Zazu CLI - payee-trust-requests/);
+    assert.match(result.stdout, /zazu payee-trust-requests get <id>/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+async function runCli(args, { configHome, reject = true, env: extraEnv = {} } = {}) {
   const env = {
     ...process.env,
     XDG_CONFIG_HOME: configHome,
     ZAZU_API_KEY: "",
     ZAZU_BASE_URL: "",
     ZAZU_VERSION: "",
+    ...extraEnv,
   };
 
   try {

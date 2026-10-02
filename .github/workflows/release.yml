@@ -146,19 +146,19 @@ jobs:
     needs: github_release
     runs-on: ubuntu-latest
     # Gated on the PUBLISH_HOMEBREW repo variable so we can soak-test
-    # releases against a private getzazu/cli without writing a broken
+    # releases against a private getmanza/cli without writing a broken
     # Homebrew formula (the formula's URLs would 404 to anyone fetching
     # them while the repo is private). Flip to "true" via:
-    #   gh variable set PUBLISH_HOMEBREW --repo getzazu/cli --body "true"
-    # at the same moment getzazu/cli is made public.
+    #   gh variable set PUBLISH_HOMEBREW --repo getmanza/cli --body "true"
+    # at the same moment getmanza/cli is made public.
     if: ${{ vars.PUBLISH_HOMEBREW == 'true' }}
 
     steps:
       - name: Bump formula
         env:
-          # Fine-grained PAT scoped to getzazu/homebrew-tap with
+          # Fine-grained PAT scoped to getmanza/homebrew-tap with
           # Contents: Read and write. Set via:
-          #   gh secret set HOMEBREW_TAP_TOKEN --repo getzazu/cli
+          #   gh secret set HOMEBREW_TAP_TOKEN --repo getmanza/cli
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
@@ -167,7 +167,7 @@ jobs:
 
           # Pull the SHA256SUMS file we just released.
           gh release download "v$version" \
-            --repo getzazu/cli \
+            --repo getmanza/cli \
             --pattern SHA256SUMS \
             --output SHA256SUMS
 
@@ -194,7 +194,7 @@ jobs:
           done
 
           # Clone, write formula, push.
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/getzazu/homebrew-tap.git" tap
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/getmanza/homebrew-tap.git" tap
           cd tap
 
           mkdir -p Formula
@@ -204,28 +204,28 @@ jobs:
 
           class Zazu < Formula
             desc "Command-line interface for the Zazu API"
-            homepage "https://github.com/getzazu/cli"
+            homepage "https://github.com/getmanza/cli"
             version "${version}"
             license "MIT"
 
             on_macos do
               on_arm do
-                url "https://github.com/getzazu/cli/releases/download/v#{version}/zazu-darwin-arm64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-darwin-arm64"
                 sha256 "${sha_darwin_arm64}"
               end
               on_intel do
-                url "https://github.com/getzazu/cli/releases/download/v#{version}/zazu-darwin-x64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-darwin-x64"
                 sha256 "${sha_darwin_x64}"
               end
             end
 
             on_linux do
               on_arm do
-                url "https://github.com/getzazu/cli/releases/download/v#{version}/zazu-linux-arm64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-linux-arm64"
                 sha256 "${sha_linux_arm64}"
               end
               on_intel do
-                url "https://github.com/getzazu/cli/releases/download/v#{version}/zazu-linux-x64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-linux-x64"
                 sha256 "${sha_linux_x64}"
               end
             end
