@@ -23,7 +23,7 @@
     "zazu": "./bin/zazu.ts"
   },
   "files": [
-    "bin",
+    "bin/zazu.ts",
     "README.md",
     "LICENSE",
     "SECURITY.md",
@@ -50,7 +50,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check:all": "bun run typecheck && bun run lint && bun test",
-    "release": "bun scripts/release.ts",
+    "release": "bin/release",
     "test": "bun test"
   },
   "devDependencies": {

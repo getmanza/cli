@@ -129,7 +129,11 @@ bun run compile                  # standalone binary at dist/zazu
 ./dist/zazu --version            # smoke test
 bun run build                    # cross-compile all 4 targets (slow)
 
-# Release (after PR merge)
+# Release (after PR merge, from a clean, up-to-date main)
+bin/release list        # last releases + what patch/minor/major would give
+bin/release --dry-run   # version + changes since the last tag, publishes nothing
+bin/release minor       # or patch (default), major, an explicit 0.3.0; --force re-creates
+# → bumps package.json, runs check:all, pushes main, publishes the GH release
 # Tag on GitHub triggers .github/workflows/release.yml which:
 #   1. cross-compiles all four binaries
 #   2. publishes the four @getzazu/cli-<arch> platform packages
