@@ -1,0 +1,11 @@
+test/cli.test.js
+  ai_agent 884-890
+bin/zazu.ts
+  ai_agent 230-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ac94535bc612328be4ee7ee12671d671dd84a6ed",
+  "prompts": {}
+}
