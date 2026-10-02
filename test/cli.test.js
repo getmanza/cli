@@ -881,6 +881,13 @@ test("transfer authorize requires --authorization-id and --signature", async () 
     assert.equal(noSignature.code, 1);
     assert.match(noSignature.stderr, /Missing signature/);
 
+    const authorizeNoAuthorization = await runCli(
+      ["--api-key", "sk_live_test", "transfers", "authorize", "td_123", "--signature", "abc123"],
+      { configHome, reject: false },
+    );
+    assert.equal(authorizeNoAuthorization.code, 1);
+    assert.match(authorizeNoAuthorization.stderr, /Missing authorization id/);
+
     const noAuthorization = await runCli(
       ["--api-key", "sk_live_test", "transfers", "decline", "td_123"],
       { configHome, reject: false },

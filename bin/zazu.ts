@@ -227,7 +227,8 @@ or use the transfer.executed webhook.
 
 \`sign\` computes the authorization signature locally. It reads the
 signing secret from the environment variable named by --secret-env and
-never takes the secret as an argument.
+never takes the secret as an argument. Pass --amount exactly as the API
+returns it (e.g. "2500.0", not "2500"), or the signature will not match.
 
 Usage:
   zazu transfers create [--data json|--file path|--stdin] [--account-id id] [--beneficiary-id id|--destination-account-id id] [--amount amount] [--payment-reference ref] [--external-account-id id] [--currency-code code] [--internal-notes text] [--client-reference ref]
