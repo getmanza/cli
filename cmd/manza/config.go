@@ -26,6 +26,9 @@ type storedConfig struct {
 }
 
 func loadStoredConfig(ignoreInvalid bool) (*storedConfig, error) {
+	if err := checkConfigRoot(); err != nil {
+		return nil, err
+	}
 	for _, path := range []string{storedConfigPath(), legacyConfigPath()} {
 		raw, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -70,6 +73,18 @@ func saveStoredConfig(values *object) error {
 }
 
 func storedConfigPath() string { return filepath.Join(configRoot(), "manza", "config.json") }
+
+// checkConfigRoot refuses to fall back to a working-directory-relative
+// .config (and write the API key there) when no home directory is known.
+func checkConfigRoot() error {
+	if os.Getenv("XDG_CONFIG_HOME") != "" {
+		return nil
+	}
+	if _, err := os.UserHomeDir(); err != nil {
+		return cliErrorf("Cannot locate the config directory: %s. Set XDG_CONFIG_HOME.", err)
+	}
+	return nil
+}
 
 // legacyConfigPath is read-only for all of 1.x: CLI versions before 1.0
 // stored their login under zazu/.

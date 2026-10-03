@@ -23,11 +23,14 @@ func promptSecret(label string) (string, error) {
 	}
 
 	value, cancelled, err := readSecret(bufio.NewReader(os.Stdin))
-	term.Restore(stdin, state)
+	restoreErr := term.Restore(stdin, state)
 	fmt.Println()
 
 	if err != nil {
 		return "", err
+	}
+	if restoreErr != nil {
+		return "", cliErrorf("Unable to restore the terminal: %s", restoreErr)
 	}
 	if cancelled {
 		return "", &cliError{message: "Login cancelled.", exitCode: 130}

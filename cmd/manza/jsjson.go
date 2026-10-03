@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -341,6 +342,14 @@ func jsString(value any) string {
 	case bool:
 		return strconv.FormatBool(v)
 	case float64:
+		switch {
+		case math.IsNaN(v):
+			return "NaN"
+		case math.IsInf(v, 1):
+			return "Infinity"
+		case math.IsInf(v, -1):
+			return "-Infinity"
+		}
 		return jsNumber(v)
 	case int:
 		return strconv.Itoa(v)

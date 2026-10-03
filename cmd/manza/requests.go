@@ -416,7 +416,11 @@ func listRequest(path string, query *object, f flags) (*apiRequest, error) {
 		return nil, err
 	}
 	all := f.truthy("all") || maxItems > 0
-	limitValue, _ := query.Get("limit")
+	limitValue, hasLimit := query.Get("limit")
+	if hasLimit && limitValue == nil {
+		// --limit null coerces to null; 1.x rejected it rather than omit it.
+		return nil, cliErrorf("Invalid --limit \"null\". Use a positive integer.")
+	}
 	pageLimit, err := parseOptionalPositiveInteger(limitValue, "limit")
 	if err != nil {
 		return nil, err

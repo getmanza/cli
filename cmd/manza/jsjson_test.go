@@ -51,6 +51,9 @@ func TestParseJSONRejectsTrailingData(t *testing.T) {
 }
 
 func TestJSString(t *testing.T) {
+	if got := jsString(mustParse(t, "1e400")); got != "Infinity" {
+		t.Errorf("jsString(1e400) = %q, want Infinity", got)
+	}
 	if got := jsString([]any{"a", true, nil, 2.0}); got != "a,true,,2" {
 		t.Errorf("jsString(array) = %q", got)
 	}

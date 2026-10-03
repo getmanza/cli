@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,7 +242,7 @@ func (s *sender) fetch(req *apiRequest, query *object) (any, error) {
 		if queryErr != nil {
 			return nil, queryErr
 		}
-		path := withQuery(normalizePath(req.path), queryString(sent))
+		path := pathWithQuery(normalizePath(req.path), sent)
 		_, err = s.client.Request(ctx, req.method, path, nil, payload)
 	}
 
@@ -279,18 +280,87 @@ func (s *sender) requestQuery(req *apiRequest, query *object) (*object, error) {
 	return out, nil
 }
 
-// withQuery appends a serialized query to a path that may already have one
-// (a raw `manza request` path). That existing query is percent-encoded the
-// way new URL() did in 1.x, so "?s=a b" goes out as "?s=a%20b".
-func withQuery(path, query string) string {
-	if base, existing, ok := strings.Cut(path, "?"); ok {
-		path = base + "?" + encodeQuery(existing)
-		if query != "" {
-			return path + "&" + query[1:]
-		}
-		return path
+// pathWithQuery adds query to a path that may already carry one (a raw
+// `manza request` path), the way 1.x did with new URL() + searchParams.set:
+// the fragment is dropped, an existing query is percent-encoded as is, and
+// once any parameter is set the whole query is reparsed, each parameter
+// replaces a same-named one, and everything is reserialized.
+func pathWithQuery(path string, query *object) string {
+	path, _, _ = strings.Cut(path, "#")
+	base, existing, hasQuery := strings.Cut(path, "?")
+	if !hasQuery {
+		return path + queryString(query)
 	}
-	return path + query
+
+	params := newObject()
+	if query != nil {
+		for _, key := range query.keys {
+			if value := query.vals[key]; value != nil {
+				params.Set(key, jsString(value))
+			}
+		}
+	}
+	if params.Len() == 0 {
+		return base + "?" + encodeQuery(existing)
+	}
+
+	pairs := parseSearchParams(existing)
+	for _, key := range params.keys {
+		value := params.vals[key].(string)
+		replaced := false
+		kept := pairs[:0]
+		for _, pair := range pairs {
+			if pair[0] != key {
+				kept = append(kept, pair)
+			} else if !replaced {
+				kept = append(kept, [2]string{key, value})
+				replaced = true
+			}
+		}
+		pairs = kept
+		if !replaced {
+			pairs = append(pairs, [2]string{key, value})
+		}
+	}
+
+	parts := make([]string, len(pairs))
+	for i, pair := range pairs {
+		parts[i] = formEncode(pair[0]) + "=" + formEncode(pair[1])
+	}
+	return base + "?" + strings.Join(parts, "&")
+}
+
+// parseSearchParams mirrors the URLSearchParams constructor.
+func parseSearchParams(query string) [][2]string {
+	var pairs [][2]string
+	for _, part := range strings.Split(query, "&") {
+		if part == "" {
+			continue
+		}
+		key, value, _ := strings.Cut(part, "=")
+		pairs = append(pairs, [2]string{formDecode(key), formDecode(value)})
+	}
+	return pairs
+}
+
+// formDecode turns + into a space and decodes %XX, leaving bad escapes as is.
+func formDecode(s string) string {
+	s = strings.ReplaceAll(s, "+", " ")
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) && isHex(s[i+1]) && isHex(s[i+2]) {
+			n, _ := strconv.ParseUint(s[i+1:i+3], 16, 8)
+			b.WriteByte(byte(n))
+			i += 2
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 // encodeQuery applies the WHATWG query percent-encode set (special schemes).
@@ -358,7 +428,7 @@ func debugURL(baseURL, path string, query *object) string {
 			}
 		}
 	}
-	target := withQuery(normalizePath(path), queryString(visible))
+	target := pathWithQuery(normalizePath(path), visible)
 	base, err := url.Parse(baseURL + "/")
 	if err != nil {
 		return baseURL + target
