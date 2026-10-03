@@ -1,0 +1,29 @@
+.bun-version
+  s_12ac1d8ceabbec::t_c74f11f4b6cbdd 1
+bun.lock
+  ai_agent 12,39,43
+CONTRIBUTING.md
+  s_12ac1d8ceabbec::t_c74f11f4b6cbdd 5
+CLAUDE.md
+  s_12ac1d8ceabbec::t_c74f11f4b6cbdd 10
+package.json
+  s_12ac1d8ceabbec::t_c74f11f4b6cbdd 40,42,61
+README.md
+  s_12ac1d8ceabbec::t_c74f11f4b6cbdd 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4986f77550651ca24e154aa498af57e93b49fa77",
+  "prompts": {},
+  "sessions": {
+    "s_12ac1d8ceabbec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b16eb1e-c392-4a34-bb05-8164b2be28b4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
