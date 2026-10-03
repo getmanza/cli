@@ -50,6 +50,25 @@ fi
 
 mkdir -p npm-dist
 
+# Publish a package directory unless that exact version is already on
+# npm. A release run that fails part-way (e.g. one package missing its
+# trusted publisher) can then be re-run: npm refuses to publish a
+# version twice, which would otherwise abort on the first package.
+#
+# npx --yes pulls a fresh, OIDC-capable npm (>= 11.5.1). The bundled
+# npm with Node 22's setup-node action is too old; updating it in place
+# via `npm install -g npm@latest` is unreliable when npm is the active
+# process.
+publish_once() {
+  local dir="$1" name="$2"
+  if [ -n "$(npm view "${name}@${VERSION}" version 2>/dev/null)" ]; then
+    echo "==> ${name}@${VERSION} is already on npm, skipping"
+    return
+  fi
+  echo "==> publishing ${name}@${VERSION}"
+  (cd "${dir}" && npx --yes npm@latest publish)
+}
+
 # 1. Build the four platform packages.
 declare -A PLATFORMS=(
   ["darwin-arm64"]="darwin arm64"
@@ -96,12 +115,7 @@ Platform binary for [\`@getmanza/cli\`](https://www.npmjs.com/package/@getmanza/
 This package only contains the prebuilt binary. You almost certainly want to install \`@getmanza/cli\` instead, which selects the correct platform package automatically.
 MD
 
-  echo "==> publishing @getmanza/cli-${arch}@${VERSION}"
-  # npx --yes pulls a fresh, OIDC-capable npm (>= 11.5.1). The
-  # bundled npm with Node 22's setup-node action is too old; updating
-  # it in place via `npm install -g npm@latest` is unreliable when
-  # npm is the active process.
-  (cd "${pkg_dir}" && npx --yes npm@latest publish)
+  publish_once "${pkg_dir}" "@getmanza/cli-${arch}"
 done
 
 # 2. Build the parent package.
@@ -193,7 +207,6 @@ chmod +x "${parent_dir}/bin/zazu.js"
 # Copy the README into the parent package so it shows on npmjs.com.
 cp README.md "${parent_dir}/README.md"
 
-echo "==> publishing @getmanza/cli@${VERSION}"
-(cd "${parent_dir}" && npx --yes npm@latest publish)
+publish_once "${parent_dir}" "@getmanza/cli"
 
 echo "==> npm publish complete"
