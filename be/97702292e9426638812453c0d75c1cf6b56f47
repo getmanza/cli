@@ -1,0 +1,31 @@
+cmd/manza/send.go
+  s_65a358fe5d7148::t_76ed494b09a06a 12,245,283-338,340-341,343-363,431
+cmd/manza/jsjson.go
+  s_65a358fe5d7148::t_76ed494b09a06a 16,345-352
+cmd/manza/prompt.go
+  s_65a358fe5d7148::t_76ed494b09a06a 26,32-33
+cmd/manza/requests.go
+  s_65a358fe5d7148::t_76ed494b09a06a 419-423
+cmd/manza/config.go
+  s_65a358fe5d7148::t_76ed494b09a06a 29-31,77-87
+cmd/manza/jsjson_test.go
+  s_65a358fe5d7148::t_76ed494b09a06a 54-56
+cmd/manza/send_test.go
+  s_65a358fe5d7148::t_76ed494b09a06a 5-23,25-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "be97702292e9426638812453c0d75c1cf6b56f47",
+  "prompts": {},
+  "sessions": {
+    "s_65a358fe5d7148": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aed514f8-b02c-4817-97cc-8dcedb8c02b5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
