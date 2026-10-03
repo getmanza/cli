@@ -1,5 +1,6 @@
 {
   "name": "@getmanza/cli",
+  "private": true,
   "version": "1.0.1",
   "description": "Command-line interface for the Manza API.",
   "type": "module",
@@ -20,18 +21,6 @@
     "invoices",
     "payments"
   ],
-  "bin": {
-    "manza": "./bin/manza.ts",
-    "zazu": "./bin/zazu.ts"
-  },
-  "files": [
-    "bin/manza.ts",
-    "bin/zazu.ts",
-    "README.md",
-    "LICENSE",
-    "SECURITY.md",
-    "CONTRIBUTING.md"
-  ],
   "publishConfig": {
     "access": "public",
     "provenance": true,
@@ -39,30 +28,21 @@
   },
   "packageManager": "bun@1.4.2",
   "engines": {
-    "bun": ">=1.4.2",
-    "node": ">=20.0.0"
+    "bun": ">=1.4.2"
   },
   "scripts": {
-    "start": "bun ./bin/manza.ts",
-    "typecheck": "tsc --noEmit",
-    "check": "bun build --target=bun --outfile=dist/.check/manza-cli-check ./bin/manza.ts",
-    "compile": "bun build --compile --outfile=dist/manza ./bin/manza.ts",
+    "start": "go run ./cmd/manza",
+    "compile": "go build -trimpath -ldflags='-s -w' -o dist/manza ./cmd/manza",
     "build": "scripts/build",
-    "lint": "biome check --error-on-warnings .",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
-    "check:all": "bun run typecheck && bun run lint && bun test",
-    "release": "bin/release",
-    "test": "bun test"
+    "lint": "biome check --error-on-warnings . && go vet . ./cmd/... && test -z \"$(gofmt -l version.go cmd)\"",
+    "lint:fix": "biome check --write . && gofmt -w version.go cmd",
+    "format": "biome format --write . && gofmt -w version.go cmd",
+    "format:check": "biome format . && test -z \"$(gofmt -l version.go cmd)\"",
+    "test": "go test . ./cmd/... && bun run compile && bun test",
+    "check:all": "bun run lint && bun run test",
+    "release": "bin/release"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
-    "@types/bun": "^1.4.2",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
-  },
-  "dependencies": {
-    "@getmanza/sdk": "^1.0.0"
+    "@biomejs/biome": "^2.4.14"
   }
 }

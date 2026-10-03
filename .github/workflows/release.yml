@@ -22,15 +22,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+
+      # Bun runs the black-box test suite; the CLI itself is Go.
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: ".bun-version"
 
       - name: Install dependencies
-        # Required so bun build / bun test can resolve @getmanza/sdk
-        # (a runtime dep, not a stdlib module). Same omission we hit
-        # on the manza-ts release workflow.
         run: bun install --frozen-lockfile
 
       - name: Verify tag matches package.json version
@@ -45,26 +48,23 @@ jobs:
           fi
 
       - name: Tests
-        run: bun test
-
-      - name: Smoke-test compiled binary (host platform)
-        # bun test only exercises the source; this catches `bun build
-        # --compile` regressions before we publish broken installs to
-        # GitHub Releases / npm / Homebrew.
+        # go test, then compile dist/manza and run the CLI suite against it.
         #
         # SDK ↔ API contract drift is caught upstream: manza-ruby
         # records cassettes against the live staging API on every
-        # release, and manza-ts (and therefore the cli, via its SDK
+        # release, and manza-go (and therefore the cli, via its SDK
         # dep) replays those cassettes. We don't repeat a third live
         # check here.
+        run: bun run test
+
+      - name: Smoke-test compiled binary (host platform)
         run: |
           set -euo pipefail
-          bun run compile
           ./dist/manza --version
           ./dist/manza --help > /dev/null
 
       - name: Cross-compile binaries
-        run: bun run build
+        run: scripts/build
 
       - name: Upload binaries (workflow artifact)
         uses: actions/upload-artifact@v7

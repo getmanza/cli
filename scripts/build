@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cross-compile the Manza CLI to standalone binaries for every supported
-# platform. Each target produces a single self-contained executable that
-# bundles the Bun runtime, so users do not need Bun, Node, or Ruby.
+# platform. Each target is a single static Go executable, so users do not
+# need Go, Bun, Node, or Ruby.
 #
 # Usage:
 #   scripts/build              # build all targets
@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p dist
 
-VERSION="$(bun -e 'console.log(require("./package.json").version)')"
+VERSION="$(scripts/version)"
 
 ALL_TARGETS=(
   "darwin-arm64"
@@ -29,14 +29,15 @@ fi
 
 for arch in "${TARGETS[@]}"; do
   out="manza-${arch}"
-  echo "==> building $out (target=bun-${arch})"
-  bun build \
-    --compile \
-    --minify \
-    --bytecode \
-    --target="bun-${arch}" \
-    --outfile "dist/${out}" \
-    bin/manza.ts
+  goos="${arch%-*}"
+  goarch="${arch#*-}"
+  [[ "$goarch" == "x64" ]] && goarch="amd64"
+  echo "==> building $out (GOOS=${goos} GOARCH=${goarch})"
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
+    -trimpath \
+    -ldflags "-s -w" \
+    -o "dist/${out}" \
+    ./cmd/manza
 done
 
 # Generate SHA256 checksums for this invocation's targets only — `manza-*`

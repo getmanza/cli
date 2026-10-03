@@ -2,7 +2,7 @@
 description: "Executes full autonomous engineering workflow with verification. Use when implementing complete features, tackling GitHub issues, or running end-to-end development cycles."
 model: opus
 argument-hint: "GitHub issue number/URL or feature description"
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(./dist/manza:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(go:*), Bash(./dist/manza:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
 ---
 
 # LFG — full autonomous workflow
@@ -39,8 +39,8 @@ Use `TaskCreate` to record steps; update with `TaskUpdate` as you go.
 ## Phase 2: Explore
 
 1. Find related files (Glob/Grep, or the Explore agent, `model: haiku`, for broad searches).
-2. Read existing patterns in the same area of `bin/manza.ts`.
-3. Understand which SDK methods to call — the CLI is a thin wrapper over `@getmanza/sdk`.
+2. Read existing patterns in the same area of `cmd/manza/`.
+3. Understand which SDK methods to call — the CLI is a thin wrapper over `manza-go` (`github.com/getmanza/manza-go`).
 4. Check existing test coverage in `test/cli.test.js`.
 
 ## Phase 3: Plan
@@ -68,13 +68,13 @@ Project conventions:
 
 | Use | Instead of |
 |-----|-----------|
-| `Manza` client + resource methods (`manza.customers.list(...)`) | hand-rolled `fetch` |
-| `instanceof ManzaError` (and subclasses) | status-code switching |
-| `for await (const item of page.records())` | manual cursor loop |
-| `printError(error, format)` | hand-rolling stderr JSON |
-| `import type { ... }` for type-only imports | mixed runtime + type imports |
-| `bun test` | jest, mocha, vitest |
-| `biome check` | eslint + prettier separately |
+| `manza-go` via `sender.fetch` (`Client.Request` or a typed method) | hand-rolled `net/http` calls |
+| `errors.As(err, &apiErr)` with `*manza.Error` / `Kind` | parsing error strings for status codes |
+| `apiRequest{paginate: true}` via `listRequest` (`sendPaginated` walks cursors) | a new cursor loop per command |
+| `printError` / `printOutput` | hand-rolling stdout/stderr JSON |
+| `*object` + `stringify` from `jsjson.go` | `encoding/json` maps (they sort keys) |
+| a case in `test/cli.test.js` (runs `dist/manza`); `go test` for internals | testing through Go function calls only |
+| `bun run lint` (Biome, `go vet`, `gofmt`) | ad-hoc formatters |
 | `npx --yes npm@latest publish` (release path) | `npm install -g npm@latest && npm publish` |
 
 ### 4.3 Refactor
@@ -84,9 +84,8 @@ Once green, refactor with tests still passing.
 ### 4.4 Validate
 
 ```bash
-bun run check:all   # typecheck + lint + test
-bun run lint:fix    # auto-apply Biome safe fixes
-bun run check       # bundle check (target=bun)
+bun run check:all   # lint (Biome, go vet, gofmt) + test (go test, CLI suite)
+bun run lint:fix    # Biome safe fixes + gofmt
 bun run compile     # standalone binary
 ./dist/manza --version   # smoke
 ```
@@ -117,7 +116,7 @@ For bug fixes, investigate before implementing:
 All must pass before committing:
 
 ```bash
-bun run check:all                    # typecheck + lint + test
+bun run check:all                    # lint + test
 bun run compile                      # binary builds
 ./dist/manza --version                # binary runs
 ```

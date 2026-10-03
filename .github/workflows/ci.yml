@@ -18,6 +18,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+
+      # Bun runs the black-box test suite and Biome; the CLI itself is Go.
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -26,20 +32,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Typecheck
-        run: bun run typecheck
-
       - name: Lint
         run: bun run lint
 
-      - name: Type and bundle check
-        run: bun run check
-
-      - name: Test
-        run: bun test
-
-      - name: Compile standalone binary
-        run: bun run compile
+      - name: Test (go test, compile, then the CLI suite against dist/manza)
+        run: bun run test
 
       - name: Smoke test binary (host)
         run: ./dist/manza --version
@@ -80,16 +77,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          bun-version-file: ".bun-version"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          go-version-file: "go.mod"
 
       - name: Cross-compile binaries for all targets
-        run: bun run build
+        run: scripts/build
 
       - name: Upload binaries
         uses: actions/upload-artifact@v7

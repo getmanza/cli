@@ -27,9 +27,8 @@ gh run view <run-id> --log-failed
 
 Categorize:
 - **Test failures** — assertion failed, timeout, child-process exit code mismatch
-- **Lint failures** — Biome rule violation, unused imports
-- **Typecheck failures** — `tsc --noEmit` errors
-- **Bundle / compile failures** — `bun build --target=bun` or `bun build --compile` failed
+- **Lint failures** — Biome rule violation, `go vet` finding, unformatted Go (`gofmt -l`)
+- **Compile failures** — `go build` / `go test` failed
 - **Cross-compile failures** — `scripts/build` failed for one of the four targets
 - **Smoke-test failures** — `./dist/manza --version` or staging API smoke test
 - **npm-publish failures** — OIDC, sigstore, per-platform package layout
@@ -44,23 +43,17 @@ For each failure:
 ### Reproduce locally
 
 ```bash
-# Test
-bun test test/cli.test.js
+# Test (go test, compile dist/manza, then the CLI suite against it)
+bun run test
 
-# Lint
+# Lint (Biome, go vet, gofmt)
 bun run lint
-
-# Typecheck
-bun run typecheck
-
-# Bundle check
-bun run check
 
 # Standalone binary
 bun run compile
 ./dist/manza --version
 
-# Cross-compile (slow — only if the build job failed)
+# Cross-compile (only if the build job failed)
 bun run build
 
 # Full pipeline
@@ -68,6 +61,7 @@ bun run check:all
 ```
 
 If you can't reproduce locally, the failure is environmental (CI-only):
+- Different Go version → check `go.mod` and the workflow `go-version-file`
 - Different Bun version → check `.bun-version` and the workflow `bun-version-file`
 - Missing dependency → did `bun install --frozen-lockfile` run before the failing step?
 - Network → external service (npm registry, staging API) hiccup
@@ -97,12 +91,9 @@ The CI step that failed has a local equivalent — run it, get green:
 
 | CI step | Local equivalent |
 |---|---|
-| `bun run typecheck` | `bun run typecheck` |
 | `bun run lint` | `bun run lint` |
-| `bun run check` | `bun run check` |
-| `bun test` | `bun test` |
-| `bun run compile` | `bun run compile` |
-| `bun run build` | `bun run build` (slow — all 4 targets) |
+| `bun run test` | `bun run test` |
+| `scripts/build` | `bun run build` (all 4 targets) |
 | `./dist/manza --version` | `./dist/manza --version` |
 | Smoke test against staging | requires secrets — skip locally, verify via post-push CI |
 | `scripts/npm-publish` | requires NODE_AUTH_TOKEN + VERSION — verify via release workflow |
@@ -143,15 +134,16 @@ gh pr view <PR> --json mergeable,reviewDecision
 ```
 
 If the failure was CI-config drift (workflow YAML out of sync with reality), also update relevant docs:
+- `go.mod` (`go` directive)
 - `.bun-version`
 - `package.json` `engines`
 - `CLAUDE.md` if a convention changed
 
 ## Common patterns and fixes
 
-### Bundle check fails with "Could not resolve: '@getmanza/sdk'"
+### The CLI suite fails with "ENOENT" spawning dist/manza
 
-CI lacks a `bun install --frozen-lockfile` step before `bun run check`. Add one to the workflow.
+The suite runs the compiled binary. Run `bun run test` (which compiles first), not bare `bun test`, or set `MANZA_CLI_BIN`.
 
 ### Trusted-publishing returned 404 from npm
 
