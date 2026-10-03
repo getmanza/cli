@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Bun 1.3 or newer
+- Bun 1.4.2 or newer
 
 ## Local checks
 

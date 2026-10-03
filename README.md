@@ -53,7 +53,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 
 ## Run from source
 
-If you have [Bun](https://bun.sh) 1.3 or newer:
+If you have [Bun](https://bun.sh) 1.4.2 or newer:
 
 ```bash
 bun ./bin/manza.ts --help
