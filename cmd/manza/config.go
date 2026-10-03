@@ -26,8 +26,10 @@ type storedConfig struct {
 }
 
 func loadStoredConfig(ignoreInvalid bool) (*storedConfig, error) {
-	if err := checkConfigRoot(); err != nil {
-		return nil, err
+	// Without a home directory there is no stored config to read; requests
+	// can still run on --api-key / MANZA_API_KEY. Writes refuse instead.
+	if checkConfigRoot() != nil {
+		return &storedConfig{values: newObject()}, nil
 	}
 	for _, path := range []string{storedConfigPath(), legacyConfigPath()} {
 		raw, err := os.ReadFile(path)
@@ -65,6 +67,9 @@ func (c *storedConfig) get(key string) string {
 }
 
 func saveStoredConfig(values *object) error {
+	if err := checkConfigRoot(); err != nil {
+		return err
+	}
 	path := storedConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
