@@ -27,4 +27,4 @@ scripts/build linux-arm64
 - Add or update tests when adding API endpoints or changing request behavior.
 - Don't bump `version` by hand: `bin/release` writes it to `package.json`, and `bin/manza.ts` reads it from there.
 - Keep API keys out of command arguments, fixtures, logs, and screenshots.
-- The CI's staging smoke test runs against the Manza staging API on every PR. A red smoke test means the CLI's request/response contract has drifted from the live API — fix the CLI, not the test, unless the API itself changed intentionally.
+- The CI's staging smoke test runs against the Manza staging API on every PR that has the staging secrets (it is skipped on forks). A red smoke test means the CLI's request/response contract has drifted from the live API — fix the CLI, not the test, unless the API itself changed intentionally.
