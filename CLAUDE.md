@@ -7,7 +7,7 @@ Command-line interface for the Manza API (renamed from zazu in 1.0). Single-file
 | Concern | Tool | Notes |
 |---|---|---|
 | Language | TypeScript 5.x | `tsconfig.json` |
-| Build / package mgmt / test runner | Bun 1.3+ | `bun build`, `bun test`, `bun install` |
+| Build / package mgmt / test runner | Bun 1.4.2+ | `bun build`, `bun test`, `bun install` |
 | Lint + format | Biome 2.x | `biome.json`. Replaces eslint + prettier |
 | Type-check | `tsc --noEmit` | Bun doesn't do this; we keep tsc for it |
 | HTTP / errors / pagination | `@getmanza/sdk` | The CLI is a thin wrapper over the SDK |
