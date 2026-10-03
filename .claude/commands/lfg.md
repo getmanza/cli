@@ -39,8 +39,8 @@ Use `TaskCreate` to record steps; update with `TaskUpdate` as you go.
 ## Phase 2: Explore
 
 1. Find related files (Glob/Grep, or the Explore agent, `model: haiku`, for broad searches).
-2. Read existing patterns in the same area of `bin/manza.ts`.
-3. Understand which SDK methods to call — the CLI is a thin wrapper over `@getmanza/sdk`.
+2. Read existing patterns in the same area of `cmd/manza/`.
+3. Understand which SDK methods to call — the CLI is a thin wrapper over `manza-go` (`github.com/getmanza/manza-go`).
 4. Check existing test coverage in `test/cli.test.js`.
 
 ## Phase 3: Plan
@@ -84,9 +84,8 @@ Once green, refactor with tests still passing.
 ### 4.4 Validate
 
 ```bash
-bun run check:all   # typecheck + lint + test
-bun run lint:fix    # auto-apply Biome safe fixes
-bun run check       # bundle check (target=bun)
+bun run check:all   # lint (Biome, go vet, gofmt) + test (go test, CLI suite)
+bun run lint:fix    # Biome safe fixes + gofmt
 bun run compile     # standalone binary
 ./dist/manza --version   # smoke
 ```
@@ -117,7 +116,7 @@ For bug fixes, investigate before implementing:
 All must pass before committing:
 
 ```bash
-bun run check:all                    # typecheck + lint + test
+bun run check:all                    # lint + test
 bun run compile                      # binary builds
 ./dist/manza --version                # binary runs
 ```

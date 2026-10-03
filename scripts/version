@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bin/release adapter: print the current version, or write a new one into every
-# tracked file that carries it (package.json only; bin/manza.ts reads it from
+# tracked file that carries it (package.json only; version.go embeds it from
 # there, and the npm platform packages take theirs from the tag at publish time).
 set -euo pipefail
 cd "$(dirname "$0")/.."

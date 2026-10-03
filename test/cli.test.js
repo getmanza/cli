@@ -1,7 +1,7 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -9,11 +9,14 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
-const cli = path.join(root, "bin", "manza.ts");
-const runtime = process.env.MANZA_CLI_RUNTIME || "bun";
+// The suite is the CLI's contract: it runs against the compiled binary
+// (MANZA_CLI_BIN, default dist/manza). The zazu name is a symlink to it.
+const cli = path.resolve(root, process.env.MANZA_CLI_BIN || path.join("dist", "manza"));
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const cliVersion = packageJson.version;
-const zazuShim = path.join(root, "bin", "zazu.ts");
+const zazuDir = await mkdtemp(path.join(os.tmpdir(), "manza-cli-zazu-"));
+const zazuShim = path.join(zazuDir, "zazu");
+await symlink(cli, zazuShim);
 // Blank every MANZA_* and legacy ZAZU_* variable so the developer's shell
 // can't leak into a test. An empty value counts as unset.
 const BLANK_ENV = {
@@ -1356,7 +1359,7 @@ async function runCli(args, { configHome, reject = true, env: extraEnv = {}, scr
   };
 
   try {
-    const result = await execFileAsync(runtime, [script, ...args], { env });
+    const result = await execFileAsync(script, args, { env });
     return { ...result, code: 0 };
   } catch (error) {
     if (reject) throw error;
@@ -1376,7 +1379,7 @@ async function runCliWithInput(args, input, { configHome, reject = true, timeout
   };
 
   return new Promise((resolve, rejectPromise) => {
-    const child = spawn(runtime, [cli, ...args], { env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(cli, args, { env, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     let settled = false;

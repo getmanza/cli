@@ -28,15 +28,13 @@ For each failing check:
 
 1. `gh run view <run-id> --log-failed` — get the actual error
 2. Reproduce locally:
-   - Test failure → `bun test test/cli.test.js`
-   - Lint failure → `bun run lint`
-   - Typecheck failure → `bun run typecheck`
-   - Bundle failure → `bun run check`
-   - Cross-compile failure → `bun run build`
+   - Test failure → `bun run test` (go test, compile, then `test/cli.test.js` against `dist/manza`)
+   - Lint failure → `bun run lint` (Biome, `go vet`, `gofmt`)
+   - Cross-compile failure → `scripts/build`
 3. Fix the root cause. Don't:
    - Disable the failing test
    - Add a `// biome-ignore` to silence the linter
-   - Cast types to bypass the typechecker
+   - Add `//nolint` or skip `go vet` to silence it
 4. Verify locally: `bun run check:all`
 5. Commit with conventional-commit prefix (`fix:`, `test:`, `chore:`)
 6. Push: `git push origin <branch>`

@@ -8,7 +8,7 @@ The CLI defaults to Morocco production at `https://ma.manza.finance`. Use `--bas
 
 Before 1.0 this was the `zazu` CLI (`@getzazu/cli`, `brew install getmanza/tap/zazu`). For all of 1.x:
 
-- `zazu` still works when installed from npm or from source. It prints a deprecation notice, then runs `manza`.
+- `zazu` still works when installed from npm, or when the binary is invoked as `zazu` (e.g. a symlink). It prints a deprecation notice, then runs `manza`.
 - An existing login in `~/.config/zazu/config.json` is still read. The first write (`manza login`, `manza config set`, ...) copies it to `~/.config/manza/config.json` and leaves the old file in place. `manza logout` only clears the new file, so delete `~/.config/zazu/config.json` once you no longer run a 0.x `zazu`: it still holds your API key.
 - The `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_VERSION` and `ZAZU_TIMEOUT_MS` variables still work, with a deprecation warning. Use the `MANZA_*` names below.
 - The Homebrew `zazu` formula is deprecated. Switch with `brew uninstall zazu && brew install getmanza/tap/manza`.
@@ -17,7 +17,7 @@ All of these fallbacks are removed in 2.0.
 
 ## Install
 
-The CLI ships as a single self-contained binary that bundles the Bun runtime — no Bun, Node, or Ruby required on the user's machine.
+The CLI ships as a single static Go binary (about 6–7 MB) — no Go, Node, Bun, or Ruby required on the user's machine.
 
 ### Homebrew (macOS / Linux)
 
@@ -53,22 +53,16 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 
 ## Run from source
 
-If you have [Bun](https://bun.sh) 1.4.2 or newer:
+If you have [Go](https://go.dev) 1.26 or newer:
 
 ```bash
-bun ./bin/manza.ts --help
+go run ./cmd/manza --help
 ```
 
-Or via the package script:
+Or install it onto your path:
 
 ```bash
-bun run start -- accounts list
-```
-
-Or link it onto your path:
-
-```bash
-bun link
+go install github.com/getmanza/cli/cmd/manza@latest
 manza --help
 ```
 
@@ -77,14 +71,14 @@ manza --help
 Build a binary for the current platform:
 
 ```bash
-bun run compile
+bun run compile     # go build -o dist/manza ./cmd/manza
 ./dist/manza --help
 ```
 
 Cross-compile binaries for every supported platform (darwin-arm64, darwin-x64, linux-x64, linux-arm64):
 
 ```bash
-bun run build
+scripts/build
 ls dist/   # manza-darwin-arm64, manza-darwin-x64, manza-linux-x64, manza-linux-arm64, SHA256SUMS
 ```
 
@@ -333,14 +327,13 @@ The `release.yml` workflow then:
 Pre-release local check:
 
 ```bash
-bun test
-bun run check
-bun run build       # all four targets
+bun run check:all   # lint + go test + the CLI suite against dist/manza
+scripts/build       # all four targets
 ls dist/            # manza-darwin-arm64, manza-darwin-x64, manza-linux-x64, manza-linux-arm64, SHA256SUMS
 ```
 
 ## Keeping the CLI in sync with the API
 
-The CLI wraps the public Manza API endpoint-by-endpoint by hand — there is no codegen yet. When the API adds, removes, or changes an endpoint, the matching change in `bin/manza.ts` happens here as a normal PR.
+The CLI wraps the public Manza API endpoint-by-endpoint by hand — there is no codegen yet. When the API adds, removes, or changes an endpoint, the matching change in `cmd/manza/` happens here as a normal PR.
 
 The CI's staging smoke test is the safety net: if the CLI drifts from the API, the next release tag fails on the smoke step before publishing.

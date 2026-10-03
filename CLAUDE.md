@@ -1,17 +1,16 @@
 # @getmanza/cli
 
-Command-line interface for the Manza API (renamed from zazu in 1.0). Single-file TypeScript source in `bin/manza.ts`, compiled to a self-contained Bun binary so end users don't need a runtime installed.
+Command-line interface for the Manza API (renamed from zazu in 1.0). Go source in `cmd/manza/`, compiled to a static ~6 MB binary per platform so end users don't need a runtime installed. Ported from Bun/TypeScript in 1.1 (the Bun binaries were 60–97 MB).
 
 ## Stack
 
 | Concern | Tool | Notes |
 |---|---|---|
-| Language | TypeScript 5.x | `tsconfig.json` |
-| Build / package mgmt / test runner | Bun 1.4.2+ | `bun build`, `bun test`, `bun install` |
-| Lint + format | Biome 2.x | `biome.json`. Replaces eslint + prettier |
-| Type-check | `tsc --noEmit` | Bun doesn't do this; we keep tsc for it |
-| HTTP / errors / pagination | `@getmanza/sdk` | The CLI is a thin wrapper over the SDK |
-| Distribution | Standalone binaries via `bun build --compile` + per-platform npm packages | `scripts/build`, `scripts/npm-publish` |
+| Language | Go 1.26+ | `go.mod`, `cmd/manza/`; `version.go` embeds `package.json`'s version |
+| HTTP / errors | `github.com/getmanza/manza-go` | The CLI is a thin wrapper over the SDK |
+| Test runner | `go test` (unit) + `bun test` (CLI suite) | `test/cli.test.js` runs the compiled binary |
+| Lint + format | `go vet` + `gofmt`; Biome 2.x for the JS test suite | `bun run lint` runs all three |
+| Distribution | `CGO_ENABLED=0 go build` per target + per-platform npm packages | `scripts/build`, `scripts/npm-publish` |
 
 ## Public surface
 
@@ -34,19 +33,19 @@ Global flags: `--api-key`, `--api-key-stdin`, `--base-url`, `--api-version`, `--
 
 ## How to work in this codebase
 
-1. **The CLI is a thin wrapper.** HTTP, retries, pagination, error mapping, JSON parsing — all in `@getmanza/sdk`. The CLI's job is argv parsing, output formatting, token storage, and login/config commands.
-2. **Tests are integration-style.** `test/cli.test.js` spawns the actual CLI binary and asserts stdout/stderr/exit codes. No unit tests on individual functions — the contract is at the CLI boundary.
-3. **One file in `bin/`, by design.** `bin/manza.ts` is intentionally a single TypeScript file; `bin/zazu.ts` is only the deprecated-name shim (removed in 2.0). Bun compiles it directly. Resist the urge to split it into modules until there's a forcing function.
-4. **Lint must be green.** `bun run lint` runs Biome with `--error-on-warnings`. Don't add `// biome-ignore` to silence — fix the issue.
+1. **The CLI is a thin wrapper.** HTTP, auth headers and error classification are in `manza-go`; every request goes through `Client.Request` or a typed SDK method. The CLI's job is argv parsing, output formatting, token storage, and login/config commands.
+2. **Output is byte-compatible with 1.0.** The CLI was TypeScript until 1.1, and scripts parse its output. `cmd/manza/jsjson.go` keeps JavaScript's JSON semantics: key insertion order, `JSON.stringify` number and string formatting. Query strings keep flag order. Don't swap in `encoding/json` maps for output or request bodies (they sort keys), and don't use `url.Values.Encode` (it sorts too).
+3. **Tests are integration-style.** `test/cli.test.js` spawns the compiled binary (`MANZA_CLI_BIN`, default `dist/manza`) against a local mock API and asserts stdout/stderr/exit codes and exact request bodies. That suite is the contract; `go test` covers only internals like `jsjson.go`.
+4. **Lint must be green.** `bun run lint` runs Biome with `--error-on-warnings`, `go vet` and `gofmt`. Don't add `// biome-ignore` or `//nolint` to silence — fix the issue.
 
 ## Critical rules
 
-- **Use the SDK.** Don't hand-roll `fetch` calls. Don't parse `error.message` for status codes — use `instanceof ManzaValidationError` etc.
-- **`bun run check:all` before every commit.** Runs typecheck + lint + test. CI runs the same commands.
+- **Use the SDK.** Don't hand-roll `net/http` calls. Don't parse error strings for status codes — use `errors.As` to `*manza.Error` and its `Kind`. The `recorder` transport in `send.go` only observes responses (headers, body in key order) that the SDK doesn't expose.
+- **`bun run check:all` before every commit.** Runs lint (Biome, `go vet`, `gofmt`) + test (`go test`, compile, CLI suite). CI runs the same commands.
 - **No long-lived `NPM_TOKEN`.** Releases publish via npm OIDC trusted publishing through the `release` GitHub environment. Each of the **five** published packages — `@getmanza/cli`, `@getmanza/cli-darwin-arm64`, `@getmanza/cli-darwin-x64`, `@getmanza/cli-linux-arm64`, `@getmanza/cli-linux-x64` — needs its own trusted-publisher binding at `https://www.npmjs.com/package/<name>/access`, set up and verified before the first 1.0 release (the `@getzazu/*` bindings don't carry over). All five point at this repo's `release.yml` workflow + `release` environment. Adding a new platform target means adding a fifth, sixth, etc. binding before its first publish.
 - **Per-platform packages, not a JS shim.** The published `@getmanza/cli` is a resolver that delegates to `@getmanza/cli-darwin-arm64` / `cli-darwin-x64` / `cli-linux-arm64` / `cli-linux-x64`. Same pattern as esbuild, swc, biome, turbo. Don't bundle the binary into the parent package.
 - **Backwards-compatible config layout.** `~/.config/manza/config.json` is read by every 1.x+ CLI; for all of 1.x the CLI falls back to reading `~/.config/zazu/config.json` and copies it to the manza path on first write. Don't change the schema without a migration path.
-- **Legacy names until 2.0.** The `zazu` command (npm + source shim), the `ZAZU_*` env vars (with a deprecation warning) and the zazu config path all keep working for 1.x. Remove them together in 2.0.
+- **Legacy names until 2.0.** The `zazu` command (npm shim, and the binary itself when invoked as `zazu`), the `ZAZU_*` env vars (with a deprecation warning) and the zazu config path all keep working for 1.x. Remove them together in 2.0.
 - **Never escape backticks in PR bodies.** With `<<'EOF'` (single-quoted heredoc) the shell passes everything through verbatim. Typing `` \` `` produces literal `` \` `` in the rendered PR. See "PR descriptions" below.
 
 ## PR descriptions
@@ -123,16 +122,15 @@ For multi-step tasks, state a brief plan with verification at each step.
 bun install
 
 # Daily loop
-bun start <args>                 # run CLI from source
-bun test test/cli.test.js        # while iterating
-bun run check:all                # before commit (typecheck + lint + test)
-bun run lint:fix                 # auto-apply Biome safe fixes
+go run ./cmd/manza <args>        # run CLI from source
+bun run compile && bun test      # while iterating (the suite runs dist/manza)
+bun run check:all                # before commit (lint + test)
+bun run lint:fix                 # Biome safe fixes + gofmt
 
 # Build verification
-bun run check                    # bundle check (target=bun)
-bun run compile                  # standalone binary at dist/manza
+bun run compile                  # binary for this platform at dist/manza
 ./dist/manza --version           # smoke test
-bun run build                    # cross-compile all 4 targets (slow)
+scripts/build                    # cross-compile all 4 targets
 
 # Release (after PR merge, from a clean, up-to-date main)
 bin/release list        # last releases + what patch/minor/major would give
@@ -163,10 +161,10 @@ These live in `.claude/commands/` and are available in any Claude Code session:
 
 ## Cross-SDK contract
 
-The CLI consumes `@getmanza/sdk`, which mirrors `manza-ruby`'s public surface and replays its cassettes. If the wire format breaks, it's coordinated across at least three repos: manza-ruby (records), manza-ts (consumes), cli (consumes).
+The CLI consumes `manza-go`, which mirrors `manza-ruby`'s public surface and replays its cassettes. If the wire format breaks, it's coordinated across at least three repos: manza-ruby (records), manza-go (consumes), cli (consumes).
 
 ## Repository links
 
 - Ruby SDK (reference): https://github.com/getmanza/manza-ruby
-- TS SDK: https://github.com/getmanza/manza-ts (https://www.npmjs.com/package/@getmanza/sdk)
+- Go SDK: https://github.com/getmanza/manza-go (`github.com/getmanza/manza-go`)
 - This repo: https://github.com/getmanza/cli (https://www.npmjs.com/package/@getmanza/cli)
