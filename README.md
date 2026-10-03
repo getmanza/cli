@@ -1,8 +1,19 @@
-# Zazu CLI
+# Manza CLI
 
-Command-line interface for the Zazu API.
+Command-line interface for the Manza API.
 
-The CLI defaults to Morocco production at `https://ma.manza.finance`. Use `--base-url` or `ZAZU_BASE_URL` only when Zazu gives you a different API host.
+The CLI defaults to Morocco production at `https://ma.manza.finance`. Use `--base-url` or `MANZA_BASE_URL` only when Manza gives you a different API host.
+
+## Renamed from zazu
+
+Before 1.0 this was the `zazu` CLI (`@getzazu/cli`, `brew install getmanza/tap/zazu`). For all of 1.x:
+
+- `zazu` still works when installed from npm or from source. It prints a deprecation notice, then runs `manza`.
+- An existing login in `~/.config/zazu/config.json` is still read. The first write (`manza login`, `manza config set`, ...) copies it to `~/.config/manza/config.json` and leaves the old file in place. `manza logout` only clears the new file, so delete `~/.config/zazu/config.json` once you no longer run a 0.x `zazu`: it still holds your API key.
+- The `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_VERSION` and `ZAZU_TIMEOUT_MS` variables still work, with a deprecation warning. Use the `MANZA_*` names below.
+- The Homebrew `zazu` formula is deprecated. Switch with `brew uninstall zazu && brew install getmanza/tap/manza`.
+
+All of these fallbacks are removed in 2.0.
 
 ## Install
 
@@ -11,30 +22,30 @@ The CLI ships as a single self-contained binary that bundles the Bun runtime —
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew install getmanza/tap/zazu
-zazu --version
+brew install getmanza/tap/manza
+manza --version
 ```
 
 ### npm
 
 ```bash
-npm install -g @getzazu/cli
-zazu --version
+npm install -g @getmanza/cli
+manza --version
 ```
 
-The npm package is a thin shim that selects the correct platform binary via `optionalDependencies`. If the binary cannot be found after install, `npm install -g @getzazu/cli --include=optional` forces optional deps.
+The npm package is a thin shim that selects the correct platform binary via `optionalDependencies`. If the binary cannot be found after install, `npm install -g @getmanza/cli --include=optional` forces optional deps.
 
 ### Direct download
 
 Grab a prebuilt binary from the [latest GitHub Release](https://github.com/getmanza/cli/releases/latest):
 
 ```bash
-chmod +x zazu-darwin-arm64
-mv zazu-darwin-arm64 /usr/local/bin/zazu
-zazu --version
+chmod +x manza-darwin-arm64
+mv manza-darwin-arm64 /usr/local/bin/manza
+manza --version
 ```
 
-Available targets: `zazu-darwin-arm64`, `zazu-darwin-x64`, `zazu-linux-x64`, `zazu-linux-arm64`. Each release publishes a `SHA256SUMS` manifest:
+Available targets: `manza-darwin-arm64`, `manza-darwin-x64`, `manza-linux-x64`, `manza-linux-arm64`. Each release publishes a `SHA256SUMS` manifest:
 
 ```bash
 shasum -a 256 -c SHA256SUMS --ignore-missing
@@ -45,7 +56,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 If you have [Bun](https://bun.sh) 1.3 or newer:
 
 ```bash
-bun ./bin/zazu.js --help
+bun ./bin/manza.ts --help
 ```
 
 Or via the package script:
@@ -58,7 +69,7 @@ Or link it onto your path:
 
 ```bash
 bun link
-zazu --help
+manza --help
 ```
 
 ## Build binaries locally
@@ -67,14 +78,14 @@ Build a binary for the current platform:
 
 ```bash
 bun run compile
-./dist/zazu --help
+./dist/manza --help
 ```
 
 Cross-compile binaries for every supported platform (darwin-arm64, darwin-x64, linux-x64, linux-arm64):
 
 ```bash
 bun run build
-ls dist/   # zazu-darwin-arm64, zazu-darwin-x64, zazu-linux-x64, zazu-linux-arm64, SHA256SUMS
+ls dist/   # manza-darwin-arm64, manza-darwin-x64, manza-linux-x64, manza-linux-arm64, SHA256SUMS
 ```
 
 To build a single target:
@@ -88,37 +99,37 @@ scripts/build linux-arm64
 The CLI sends `Authorization: Bearer <key>` on every API request. Store the key once using the hidden prompt:
 
 ```bash
-zazu login
+manza login
 ```
 
 For scripts and secret managers, pipe the key through stdin so it does not appear in shell history:
 
 ```bash
-printf '%s\n' "$ZAZU_API_KEY" | zazu login --api-key-stdin
+printf '%s\n' "$MANZA_API_KEY" | manza login --api-key-stdin
 ```
 
 You can also use an environment variable:
 
 ```bash
-export ZAZU_API_KEY="sk_live_..."
+export MANZA_API_KEY="sk_live_..."
 ```
 
 Optional environment variables:
 
 | Variable | Description |
 | --- | --- |
-| `ZAZU_API_KEY` | API bearer token |
-| `ZAZU_BASE_URL` | API host, defaults to `https://ma.manza.finance` |
-| `ZAZU_VERSION` | Optional `Zazu-Version` header |
-| `ZAZU_TIMEOUT_MS` | Request timeout in milliseconds, defaults to `30000` |
+| `MANZA_API_KEY` | API bearer token |
+| `MANZA_BASE_URL` | API host, defaults to `https://ma.manza.finance` |
+| `MANZA_API_VERSION` | Optional `Manza-Version` header |
+| `MANZA_TIMEOUT_MS` | Request timeout in milliseconds, defaults to `30000` |
 
 Global flags:
 
 ```text
 --api-key <key>       API bearer token
---api-key-stdin       Read API key from stdin for zazu login
+--api-key-stdin       Read API key from stdin for manza login
 --base-url <url>      API host, defaults to https://ma.manza.finance
---api-version <date>  Zazu-Version header
+--api-version <date>  Manza-Version header
 --timeout-ms <ms>     Request timeout in milliseconds
 --output <format>     json, pretty, or raw
 --format <format>     Alias for --output
@@ -133,12 +144,12 @@ Global flags:
 Config commands:
 
 ```bash
-printf '%s\n' "$ZAZU_API_KEY" | zazu login --api-key-stdin
-zazu logout
-zazu config get
-zazu config set api-base <api-host>
-zazu config set api-version 2026-03-27
-zazu config unset api-version
+printf '%s\n' "$MANZA_API_KEY" | manza login --api-key-stdin
+manza logout
+manza config get
+manza config set api-base <api-host>
+manza config set api-version 2026-03-27
+manza config unset api-version
 ```
 
 Production API hosts:
@@ -151,156 +162,156 @@ South Africa production https://za.manza.finance
 ## Examples
 
 ```bash
-zazu entity get
-zazu accounts list --currency-code MAD
-zazu accounts get 01964a3b-0000-7000-8000-ac6000000a01
-zazu accounts transactions 01964a3b-0000-7000-8000-ac6000000a01 --operation credit
-zazu accounts transaction 01964a3b-0000-7000-8000-ac6000000a01 01964a3b-7c8d-7000-8000-a10000000001
-zazu transactions list --account-id 01964a3b-0000-7000-8000-ac6000000a01 --operation credit
-zazu transactions get --account-id 01964a3b-0000-7000-8000-ac6000000a01 01964a3b-7c8d-7000-8000-a10000000001
+manza entity get
+manza accounts list --currency-code MAD
+manza accounts get 01964a3b-0000-7000-8000-ac6000000a01
+manza accounts transactions 01964a3b-0000-7000-8000-ac6000000a01 --operation credit
+manza accounts transaction 01964a3b-0000-7000-8000-ac6000000a01 01964a3b-7c8d-7000-8000-a10000000001
+manza transactions list --account-id 01964a3b-0000-7000-8000-ac6000000a01 --operation credit
+manza transactions get --account-id 01964a3b-0000-7000-8000-ac6000000a01 01964a3b-7c8d-7000-8000-a10000000001
 
-zazu customers list --q acme
-zazu customers create \
+manza customers list --q acme
+manza customers create \
   --company-name "Acme Corp" \
   --email billing@acme.com \
   --billing-address '{"street":"123 Main St","city":"Casablanca","postal_code":"20000","country":"Morocco","country_code":"MA"}'
 
-zazu invoices create --file invoice.json
-zazu invoices send 01964a3b-7c8d-7000-8000-deadbeef1234
-zazu invoices payment-link 01964a3b-7c8d-7000-8000-deadbeef1234 --account-id 01964a3b-0000-7000-8000-ac6000000a01
+manza invoices create --file invoice.json
+manza invoices send 01964a3b-7c8d-7000-8000-deadbeef1234
+manza invoices payment-link 01964a3b-7c8d-7000-8000-deadbeef1234 --account-id 01964a3b-0000-7000-8000-ac6000000a01
 
-zazu payment-links create \
+manza payment-links create \
   --account-id 01964a3b-0000-7000-8000-ac6000000a01 \
   --amount 1500.00 \
   --description "March consulting invoice" \
   --payment-reference INV-000042
-zazu payment-links cancel 01964a3b-7c8d-7000-8000-deadbeef1234
+manza payment-links cancel 01964a3b-7c8d-7000-8000-deadbeef1234
 
-zazu webhook-endpoints create \
+manza webhook-endpoints create \
   --url https://example.com/webhooks/zazu \
   --description "Production" \
   --event payment_link.paid \
   --event transfer.executed
-zazu webhook-endpoints test 01964a3b-7c8d-7000-8000-deadbeef1234
-zazu webhook-endpoints regenerate-secret 01964a3b-7c8d-7000-8000-deadbeef1234
+manza webhook-endpoints test 01964a3b-7c8d-7000-8000-deadbeef1234
+manza webhook-endpoints regenerate-secret 01964a3b-7c8d-7000-8000-deadbeef1234
 
-zazu checkout-sessions create \
+manza checkout-sessions create \
   --account-id 01964a3b-0000-7000-8000-ac6000000a01 \
   --amount 100.00 \
   --success-url "https://example.com/ok?session_id={CHECKOUT_SESSION_ID}" \
   --cancel-url https://example.com/cancel \
   --customer-email buyer@example.com
-zazu checkout-sessions get cs_20OoDQ3U1LlTHdIHh5rEJynM
+manza checkout-sessions get cs_20OoDQ3U1LlTHdIHh5rEJynM
 ```
 
 List endpoints use cursor pagination. Fetch one page:
 
 ```bash
-zazu invoices list --limit 25
-zazu invoices list --limit 25 --cursor eyJpZCI6IjAxOTY0...
-zazu webhook-endpoints list --limit 25
+manza invoices list --limit 25
+manza invoices list --limit 25 --cursor eyJpZCI6IjAxOTY0...
+manza webhook-endpoints list --limit 25
 ```
 
 Or let the CLI fetch multiple pages:
 
 ```bash
-zazu invoices list --all
-zazu invoices list --max-items 100
-zazu transactions list --account-id 01964a3b-0000-7000-8000-ac6000000a01 --max-items 100
-zazu webhook-endpoints list --all
+manza invoices list --all
+manza invoices list --max-items 100
+manza transactions list --account-id 01964a3b-0000-7000-8000-ac6000000a01 --max-items 100
+manza webhook-endpoints list --all
 ```
 
 For nested payloads, use `--data`, `--file`, or `--stdin`:
 
 ```bash
-zazu invoices create --data '{"customer_id":"...","issue_date":"2026-03-15","due_date":"2026-04-15","items":[{"description":"Consulting","quantity":10,"unit_price":"150.00"}]}'
-zazu invoices create --file invoice.json
-cat invoice.json | zazu invoices create --stdin
+manza invoices create --data '{"customer_id":"...","issue_date":"2026-03-15","due_date":"2026-04-15","items":[{"description":"Consulting","quantity":10,"unit_price":"150.00"}]}'
+manza invoices create --file invoice.json
+cat invoice.json | manza invoices create --stdin
 ```
 
 ## Commands
 
 ```text
-zazu login [--api-key-stdin] [--base-url <url>]
-zazu logout
-zazu config get [api-key|api-base|api-version]
-zazu config set <api-key|api-base|api-version> <value>
-zazu config unset <api-key|api-base|api-version>
+manza login [--api-key-stdin] [--base-url <url>]
+manza logout
+manza config get [api-key|api-base|api-version]
+manza config set <api-key|api-base|api-version> <value>
+manza config unset <api-key|api-base|api-version>
 
-zazu entity get
-zazu status
+manza entity get
+manza status
 
-zazu accounts list [--status value] [--currency-code value] [--limit n] [--cursor value] [--all|--max-items n]
-zazu accounts get <id>
-zazu accounts transactions <account-id> [--operation value] [--posted-after time] [--posted-before time] [--limit n] [--cursor value] [--all|--max-items n]
-zazu accounts transaction <account-id> <transaction-id>
-zazu transactions list --account-id <account-id> [--operation value] [--posted-after time] [--posted-before time] [--limit n] [--cursor value] [--all|--max-items n]
-zazu transactions get --account-id <account-id> <transaction-id>
+manza accounts list [--status value] [--currency-code value] [--limit n] [--cursor value] [--all|--max-items n]
+manza accounts get <id>
+manza accounts transactions <account-id> [--operation value] [--posted-after time] [--posted-before time] [--limit n] [--cursor value] [--all|--max-items n]
+manza accounts transaction <account-id> <transaction-id>
+manza transactions list --account-id <account-id> [--operation value] [--posted-after time] [--posted-before time] [--limit n] [--cursor value] [--all|--max-items n]
+manza transactions get --account-id <account-id> <transaction-id>
 
-zazu customers list [--q value] [--limit n] [--cursor value] [--all|--max-items n]
-zazu customers get <id>
-zazu customers create [--data json|--file path|--stdin] [customer flags]
-zazu customers update <id> [--data json|--file path|--stdin] [customer flags]
-zazu customers delete <id>
+manza customers list [--q value] [--limit n] [--cursor value] [--all|--max-items n]
+manza customers get <id>
+manza customers create [--data json|--file path|--stdin] [customer flags]
+manza customers update <id> [--data json|--file path|--stdin] [customer flags]
+manza customers delete <id>
 
-zazu invoices list [--status value] [--customer-id id] [--limit n] [--cursor value] [--all|--max-items n]
-zazu invoices get <id>
-zazu invoices create [--data json|--file path|--stdin] [invoice flags]
-zazu invoices update <id> [--data json|--file path|--stdin] [invoice flags]
-zazu invoices send <id>
-zazu invoices mark-as-paid <id>
-zazu invoices cancel <id>
-zazu invoices credit-note <id>
-zazu invoices delete <id>
-zazu invoices payment-link <id> --account-id <account-id>
+manza invoices list [--status value] [--customer-id id] [--limit n] [--cursor value] [--all|--max-items n]
+manza invoices get <id>
+manza invoices create [--data json|--file path|--stdin] [invoice flags]
+manza invoices update <id> [--data json|--file path|--stdin] [invoice flags]
+manza invoices send <id>
+manza invoices mark-as-paid <id>
+manza invoices cancel <id>
+manza invoices credit-note <id>
+manza invoices delete <id>
+manza invoices payment-link <id> --account-id <account-id>
 
-zazu payment-links list [--status value] [--link-type value] [--limit n] [--cursor value] [--all|--max-items n]
-zazu payment-links get <id>
-zazu payment-links create [--data json|--file path|--stdin] [payment link flags]
-zazu payment-links cancel <id>
+manza payment-links list [--status value] [--link-type value] [--limit n] [--cursor value] [--all|--max-items n]
+manza payment-links get <id>
+manza payment-links create [--data json|--file path|--stdin] [payment link flags]
+manza payment-links cancel <id>
 
-zazu webhook-endpoints list [--limit n] [--cursor value] [--all|--max-items n]
-zazu webhook-endpoints get <id>
-zazu webhook-endpoints create [--data json|--file path|--stdin] [--url url] [--description text] [--event value]
-zazu webhook-endpoints update <id> [--data json|--file path|--stdin] [--url url] [--description text] [--event value]
-zazu webhook-endpoints delete <id>
-zazu webhook-endpoints test <id>
-zazu webhook-endpoints regenerate-secret <id>
-zazu webhook-endpoints enable <id>
-zazu webhook-endpoints disable <id>
+manza webhook-endpoints list [--limit n] [--cursor value] [--all|--max-items n]
+manza webhook-endpoints get <id>
+manza webhook-endpoints create [--data json|--file path|--stdin] [--url url] [--description text] [--event value]
+manza webhook-endpoints update <id> [--data json|--file path|--stdin] [--url url] [--description text] [--event value]
+manza webhook-endpoints delete <id>
+manza webhook-endpoints test <id>
+manza webhook-endpoints regenerate-secret <id>
+manza webhook-endpoints enable <id>
+manza webhook-endpoints disable <id>
 
-zazu checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
-zazu checkout-sessions get <id>
+manza checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
+manza checkout-sessions get <id>
 
-zazu transfers create [--data json|--file path|--stdin] [transfer flags] [--client-reference ref]
-zazu transfers get <id>
-zazu transfers authorize <id> --authorization-id <id> --signature <hex>
-zazu transfers decline <id> --authorization-id <id> [--reason text]
-zazu transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
+manza transfers create [--data json|--file path|--stdin] [transfer flags] [--client-reference ref]
+manza transfers get <id>
+manza transfers authorize <id> --authorization-id <id> --signature <hex>
+manza transfers decline <id> --authorization-id <id> [--reason text]
+manza transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
 
-zazu beneficiaries list [--limit n] [--cursor value] [--all|--max-items n]
-zazu beneficiaries get <id>
-zazu beneficiaries create [--data json|--file path|--stdin] [beneficiary flags]
-zazu beneficiaries accounts list <beneficiary-id> [--limit n] [--cursor value] [--all|--max-items n]
-zazu beneficiaries accounts get <beneficiary-id> <account-id>
-zazu beneficiaries accounts create <beneficiary-id> [--data json|--file path|--stdin] [account flags]
+manza beneficiaries list [--limit n] [--cursor value] [--all|--max-items n]
+manza beneficiaries get <id>
+manza beneficiaries create [--data json|--file path|--stdin] [beneficiary flags]
+manza beneficiaries accounts list <beneficiary-id> [--limit n] [--cursor value] [--all|--max-items n]
+manza beneficiaries accounts get <beneficiary-id> <account-id>
+manza beneficiaries accounts create <beneficiary-id> [--data json|--file path|--stdin] [account flags]
 
-zazu payee-trust-requests create --external-account-id <id> [--external-account-id <id> ...]
-zazu payee-trust-requests get <id>
+manza payee-trust-requests create --external-account-id <id> [--external-account-id <id> ...]
+manza payee-trust-requests get <id>
 
-zazu request <method> <path> [--data json|--file path|--stdin] [--query key=value]
+manza request <method> <path> [--data json|--file path|--stdin] [--query key=value]
 ```
 
 Use `--help` with a resource to show a smaller command reference:
 
 ```bash
-zazu invoices --help
-zazu webhook-endpoints --help
+manza invoices --help
+manza webhook-endpoints --help
 ```
 
 ## Release
 
-Releases are tag-driven, cut from a clean, up-to-date `main` with `bin/release` (the zazu SDK release kit; repo-specific bits live in `scripts/version` and `scripts/release-check`):
+Releases are tag-driven, cut from a clean, up-to-date `main` with `bin/release` (the manza SDK release kit; repo-specific bits live in `scripts/version` and `scripts/release-check`):
 
 ```bash
 bin/release list        # last releases + what patch/minor/major would give
@@ -313,10 +324,10 @@ It bumps `package.json`, runs `check:all`, pushes `main` and publishes the GitHu
 The `release.yml` workflow then:
 - Verifies the tag matches `package.json` version.
 - Runs the test suite + smoke-tests the compiled binary on the host.
-- Smoke-tests against the Zazu staging API (read-only happy path).
+- Smoke-tests against the Manza staging API (read-only happy path).
 - Cross-compiles all four binaries.
 - Creates a GitHub Release with auto-generated notes, binaries, and `SHA256SUMS`.
-- Publishes `@getzazu/cli` plus four per-platform packages (`@getzazu/cli-darwin-arm64`, etc.) to npm.
+- Publishes `@getmanza/cli` plus four per-platform packages (`@getmanza/cli-darwin-arm64`, etc.) to npm.
 - Bumps the `getmanza/homebrew-tap` formula (gated on `vars.PUBLISH_HOMEBREW == 'true'`).
 
 Pre-release local check:
@@ -325,11 +336,11 @@ Pre-release local check:
 bun test
 bun run check
 bun run build       # all four targets
-ls dist/            # zazu-darwin-arm64, zazu-darwin-x64, zazu-linux-x64, zazu-linux-arm64, SHA256SUMS
+ls dist/            # manza-darwin-arm64, manza-darwin-x64, manza-linux-x64, manza-linux-arm64, SHA256SUMS
 ```
 
 ## Keeping the CLI in sync with the API
 
-The CLI wraps the public Zazu API endpoint-by-endpoint by hand — there is no codegen yet. When the API adds, removes, or changes an endpoint, the matching change in `bin/zazu.js` happens here as a normal PR.
+The CLI wraps the public Manza API endpoint-by-endpoint by hand — there is no codegen yet. When the API adds, removes, or changes an endpoint, the matching change in `bin/manza.ts` happens here as a normal PR.
 
 The CI's staging smoke test is the safety net: if the CLI drifts from the API, the next release tag fails on the smoke step before publishing.

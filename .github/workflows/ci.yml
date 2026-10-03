@@ -42,22 +42,23 @@ jobs:
         run: bun run compile
 
       - name: Smoke test binary (host)
-        run: ./dist/zazu --version
+        run: ./dist/manza --version
 
-      # Hits the Zazu staging API with a known read-only key. Catches
+      # Hits the Manza staging API with a known read-only key. Catches
       # CLI ↔ API contract drift loudly: if a controller changes a
       # response shape or removes a field the CLI relies on, this step
       # fails before a release ships. Skipped in forks (no secrets).
-      - name: Smoke test against Zazu staging
-        if: ${{ env.ZAZU_STAGING_URL != '' && env.ZAZU_STAGING_API_KEY != '' }}
+      # Falls back to the ZAZU_STAGING_* secrets until they are renamed.
+      - name: Smoke test against Manza staging
+        if: ${{ env.MANZA_STAGING_URL != '' && env.MANZA_STAGING_API_KEY != '' }}
         env:
-          ZAZU_STAGING_URL: ${{ secrets.ZAZU_STAGING_URL }}
-          ZAZU_STAGING_API_KEY: ${{ secrets.ZAZU_STAGING_API_KEY }}
+          MANZA_STAGING_URL: ${{ secrets.MANZA_STAGING_URL || secrets.ZAZU_STAGING_URL }}
+          MANZA_STAGING_API_KEY: ${{ secrets.MANZA_STAGING_API_KEY || secrets.ZAZU_STAGING_API_KEY }}
         run: |
           set -euo pipefail
-          ./dist/zazu \
-            --base-url "$ZAZU_STAGING_URL" \
-            --api-key "$ZAZU_STAGING_API_KEY" \
+          ./dist/manza \
+            --base-url "$MANZA_STAGING_URL" \
+            --api-key "$MANZA_STAGING_API_KEY" \
             --pretty \
             entity get | tee staging-entity.json
 
@@ -93,9 +94,9 @@ jobs:
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
-          name: zazu-cli-binaries
+          name: manza-cli-binaries
           path: |
-            dist/zazu-*
+            dist/manza-*
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 14

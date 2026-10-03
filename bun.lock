@@ -3,9 +3,9 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@getzazu/cli",
+      "name": "@getmanza/cli",
       "dependencies": {
-        "@getzazu/sdk": "^0.3.0",
+        "@getmanza/sdk": "^1.0.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -34,7 +34,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.14", "", { "os": "win32", "cpu": "x64" }, "sha512-WL0EG5qE+EAKomGXbf2g6VnSKJhTL3tXC0QRzWRwA5VpjxNYa6H4P7ZWfymbGE4IhZZQi1KXQ2R0YjwInmz2fA=="],
 
-    "@getzazu/sdk": ["@getzazu/sdk@0.3.0", "", {}, "sha512-p0Op2DTQ+CbSvZf2OinkaekFmCK6vJbeABVWHM4fzxEAkqNVdxiO2QonxCYCd3pujqSgr9Hu6/es3l9MfhlYQg=="],
+    "@getmanza/sdk": ["@getmanza/sdk@1.0.1", "", {}, "sha512-8dl/mKgASCy9QycqeteT/THDx7HAseqxoCQrEd8jBraZM5znusFaTf7lDzSM88pgnj6sdUwyDy6fFRDRrLQv6Q=="],
 
     "@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 

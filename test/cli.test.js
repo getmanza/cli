@@ -9,10 +9,23 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
-const cli = path.join(root, "bin", "zazu.ts");
-const runtime = process.env.ZAZU_CLI_RUNTIME || "bun";
+const cli = path.join(root, "bin", "manza.ts");
+const runtime = process.env.MANZA_CLI_RUNTIME || "bun";
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const cliVersion = packageJson.version;
+const zazuShim = path.join(root, "bin", "zazu.ts");
+// Blank every MANZA_* and legacy ZAZU_* variable so the developer's shell
+// can't leak into a test. An empty value counts as unset.
+const BLANK_ENV = {
+  MANZA_API_KEY: "",
+  MANZA_BASE_URL: "",
+  MANZA_API_VERSION: "",
+  MANZA_TIMEOUT_MS: "",
+  ZAZU_API_KEY: "",
+  ZAZU_BASE_URL: "",
+  ZAZU_VERSION: "",
+  ZAZU_TIMEOUT_MS: "",
+};
 
 test("login stores a masked API key and config commands can read and remove it", async () => {
   const configHome = await tempConfigHome();
@@ -29,7 +42,9 @@ test("login stores a masked API key and config commands can read and remove it",
       base_url: "https://api.example.test",
     });
 
-    const config = JSON.parse(await readFile(path.join(configHome, "zazu", "config.json"), "utf8"));
+    const config = JSON.parse(
+      await readFile(path.join(configHome, "manza", "config.json"), "utf8"),
+    );
     assert.equal(config.api_key, "sk_live_abcdefghijklmnopqrstuvwxyz1234567890");
     assert.equal(config.base_url, "https://api.example.test");
 
@@ -38,14 +53,14 @@ test("login stores a masked API key and config commands can read and remove it",
       api_key: "sk_live_...7890",
       api_base: "https://api.example.test",
       api_version: null,
-      config_path: path.join(configHome, "zazu", "config.json"),
+      config_path: path.join(configHome, "manza", "config.json"),
     });
 
     const unset = await runCli(["logout", "--pretty"], { configHome });
     assert.deepEqual(JSON.parse(unset.stdout), { ok: true });
 
     const afterLogout = JSON.parse(
-      await readFile(path.join(configHome, "zazu", "config.json"), "utf8"),
+      await readFile(path.join(configHome, "manza", "config.json"), "utf8"),
     );
     assert.equal(afterLogout.api_key, undefined);
   } finally {
@@ -75,12 +90,12 @@ test("resource help does not require authentication", async () => {
   const configHome = await tempConfigHome();
 
   try {
-    await mkdir(path.join(configHome, "zazu"), { recursive: true });
-    await writeFile(path.join(configHome, "zazu", "config.json"), "{not-json", "utf8");
+    await mkdir(path.join(configHome, "manza"), { recursive: true });
+    await writeFile(path.join(configHome, "manza", "config.json"), "{not-json", "utf8");
 
     const result = await runCli(["invoices", "--help"], { configHome });
-    assert.match(result.stdout, /Zazu CLI - invoices/);
-    assert.match(result.stdout, /zazu invoices payment-link <id> --account-id <account-id>/);
+    assert.match(result.stdout, /Manza CLI - invoices/);
+    assert.match(result.stdout, /manza invoices payment-link <id> --account-id <account-id>/);
     assert.doesNotMatch(result.stdout, /Global flags:/);
   } finally {
     await rm(configHome, { recursive: true, force: true });
@@ -91,8 +106,8 @@ test("version does not require readable config", async () => {
   const configHome = await tempConfigHome();
 
   try {
-    await mkdir(path.join(configHome, "zazu"), { recursive: true });
-    await writeFile(path.join(configHome, "zazu", "config.json"), "{not-json", "utf8");
+    await mkdir(path.join(configHome, "manza"), { recursive: true });
+    await writeFile(path.join(configHome, "manza", "config.json"), "{not-json", "utf8");
 
     const result = await runCli(["--version"], { configHome });
     assert.equal(result.stdout, `${cliVersion}\n`);
@@ -105,8 +120,8 @@ test("recovery commands tolerate a corrupt stored config", async () => {
   const configHome = await tempConfigHome();
 
   try {
-    await mkdir(path.join(configHome, "zazu"), { recursive: true });
-    await writeFile(path.join(configHome, "zazu", "config.json"), "{not-json", "utf8");
+    await mkdir(path.join(configHome, "manza"), { recursive: true });
+    await writeFile(path.join(configHome, "manza", "config.json"), "{not-json", "utf8");
 
     const login = await runCliWithInput(
       ["login", "--api-key-stdin", "--base-url", "https://api.example.test", "--pretty"],
@@ -119,7 +134,9 @@ test("recovery commands tolerate a corrupt stored config", async () => {
       base_url: "https://api.example.test",
     });
 
-    const stored = JSON.parse(await readFile(path.join(configHome, "zazu", "config.json"), "utf8"));
+    const stored = JSON.parse(
+      await readFile(path.join(configHome, "manza", "config.json"), "utf8"),
+    );
     assert.equal(stored.api_key, "sk_live_abcdefghijklmnopqrstuvwxyz1234567890");
     assert.equal(stored.base_url, "https://api.example.test");
   } finally {
@@ -198,7 +215,7 @@ test("missing API key returns a useful error", async () => {
     const result = await runCli(["entity", "get"], { configHome, reject: false });
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Missing API key/);
-    assert.match(result.stderr, /zazu login/);
+    assert.match(result.stderr, /manza login/);
   } finally {
     await rm(configHome, { recursive: true, force: true });
   }
@@ -319,7 +336,7 @@ test("API errors include response status and body", async () => {
   const configHome = await tempConfigHome();
   const server = await createServer((_req, res) => {
     res.setHeader("X-Request-Id", "req_123");
-    res.setHeader("Zazu-Version", "2026-04-29");
+    res.setHeader("Manza-Version", "2026-04-29");
     sendJSON(
       res,
       {
@@ -347,7 +364,7 @@ test("API errors include response status and body", async () => {
       },
       status: 403,
       request_id: "req_123",
-      zazu_version: "2026-04-29",
+      manza_version: "2026-04-29",
     });
   } finally {
     await server.close();
@@ -1114,25 +1131,232 @@ test("payee-trust-requests help lists its commands", async () => {
 
   try {
     const result = await runCli(["payee-trust-requests", "--help"], { configHome });
-    assert.match(result.stdout, /Zazu CLI - payee-trust-requests/);
-    assert.match(result.stdout, /zazu payee-trust-requests get <id>/);
+    assert.match(result.stdout, /Manza CLI - payee-trust-requests/);
+    assert.match(result.stdout, /manza payee-trust-requests get <id>/);
   } finally {
     await rm(configHome, { recursive: true, force: true });
   }
 });
 
-async function runCli(args, { configHome, reject = true, env: extraEnv = {} } = {}) {
+test("an existing ~/.config/zazu login keeps working and is copied to manza on first write", async () => {
+  const configHome = await tempConfigHome();
+  const legacyPath = path.join(configHome, "zazu", "config.json");
+  const manzaPath = path.join(configHome, "manza", "config.json");
+  const requests = [];
+  const server = await createServer((req, res) => {
+    requests.push({ url: req.url, authorization: req.headers.authorization });
+    sendJSON(res, { id: "entity_1" });
+  });
+
+  try {
+    await mkdir(path.dirname(legacyPath), { recursive: true });
+    const legacy = `${JSON.stringify(
+      { api_key: "sk_live_legacy_key_1234", base_url: server.baseURL },
+      null,
+      2,
+    )}\n`;
+    await writeFile(legacyPath, legacy, "utf8");
+
+    const entity = await runCli(["entity", "get"], { configHome });
+    assert.deepEqual(JSON.parse(entity.stdout), { id: "entity_1" });
+    assert.deepEqual(requests, [
+      { url: "/api/entity", authorization: "Bearer sk_live_legacy_key_1234" },
+    ]);
+
+    const before = JSON.parse((await runCli(["config", "get"], { configHome })).stdout);
+    assert.equal(before.config_path, legacyPath);
+    assert.equal(before.api_key, "sk_live_...1234");
+
+    await runCli(["config", "set", "api-version", "2026-10-01"], { configHome });
+
+    assert.deepEqual(JSON.parse(await readFile(manzaPath, "utf8")), {
+      api_key: "sk_live_legacy_key_1234",
+      base_url: server.baseURL,
+      api_version: "2026-10-01",
+    });
+    assert.equal(await readFile(legacyPath, "utf8"), legacy);
+
+    const after = JSON.parse((await runCli(["config", "get"], { configHome })).stdout);
+    assert.equal(after.config_path, manzaPath);
+    assert.equal(after.api_version, "2026-10-01");
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("the manza config wins over a legacy zazu config", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    await mkdir(path.join(configHome, "zazu"), { recursive: true });
+    await mkdir(path.join(configHome, "manza"), { recursive: true });
+    await writeFile(
+      path.join(configHome, "zazu", "config.json"),
+      JSON.stringify({ api_version: "legacy" }),
+    );
+    await writeFile(
+      path.join(configHome, "manza", "config.json"),
+      JSON.stringify({ api_version: "current" }),
+    );
+
+    const get = JSON.parse((await runCli(["config", "get", "api-version"], { configHome })).stdout);
+    assert.deepEqual(get, { api_version: "current" });
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("a corrupt manza config is an error, not a silent fallback to the legacy one", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    await mkdir(path.join(configHome, "zazu"), { recursive: true });
+    await mkdir(path.join(configHome, "manza"), { recursive: true });
+    await writeFile(
+      path.join(configHome, "zazu", "config.json"),
+      JSON.stringify({ api_key: "sk_live_legacy" }),
+    );
+    await writeFile(path.join(configHome, "manza", "config.json"), "{not-json");
+
+    const result = await runCli(["entity", "get"], { configHome, reject: false });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Invalid JSON/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("MANZA_* env vars configure requests without warnings", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer((req, res) => {
+    requests.push({
+      authorization: req.headers.authorization,
+      version: req.headers["manza-version"],
+    });
+    sendJSON(res, { id: "entity_1" });
+  });
+
+  try {
+    const result = await runCli(["entity", "get"], {
+      configHome,
+      env: {
+        MANZA_API_KEY: "sk_live_manza",
+        MANZA_BASE_URL: server.baseURL,
+        MANZA_API_VERSION: "2026-10-01",
+        ZAZU_API_KEY: "sk_live_ignored",
+        ZAZU_BASE_URL: "http://127.0.0.1:9",
+        ZAZU_VERSION: "ignored",
+      },
+    });
+
+    assert.equal(result.stderr, "");
+    assert.deepEqual(requests, [{ authorization: "Bearer sk_live_manza", version: "2026-10-01" }]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("legacy ZAZU_* env vars still work and warn once each", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer((req, res) => {
+    requests.push({
+      authorization: req.headers.authorization,
+      version: req.headers["manza-version"],
+    });
+    sendJSON(res, { id: "entity_1" });
+  });
+
+  try {
+    const result = await runCli(["entity", "get"], {
+      configHome,
+      env: {
+        ZAZU_API_KEY: "sk_live_legacy",
+        ZAZU_BASE_URL: server.baseURL,
+        ZAZU_VERSION: "2026-10-01",
+        ZAZU_TIMEOUT_MS: "5000",
+      },
+    });
+
+    assert.deepEqual(JSON.parse(result.stdout), { id: "entity_1" });
+    assert.deepEqual(requests, [{ authorization: "Bearer sk_live_legacy", version: "2026-10-01" }]);
+    assert.deepEqual(result.stderr.trim().split("\n").sort(), [
+      "[manza] ZAZU_API_KEY is deprecated and will be removed in 2.0. Use MANZA_API_KEY instead.",
+      "[manza] ZAZU_BASE_URL is deprecated and will be removed in 2.0. Use MANZA_BASE_URL instead.",
+      "[manza] ZAZU_TIMEOUT_MS is deprecated and will be removed in 2.0. Use MANZA_TIMEOUT_MS instead.",
+      "[manza] ZAZU_VERSION is deprecated and will be removed in 2.0. Use MANZA_API_VERSION instead.",
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("API errors fall back to the legacy Zazu-Version response header", async () => {
+  const configHome = await tempConfigHome();
+  const server = await createServer((_req, res) => {
+    res.setHeader("Zazu-Version", "2026-04-29");
+    sendJSON(res, { error: { message: "Not found", type: "not_found" } }, 404);
+  });
+
+  try {
+    const result = await runCli(
+      ["--api-key", "sk_live_test", "--base-url", server.baseURL, "entity", "get"],
+      { configHome, reject: false },
+    );
+
+    assert.equal(result.code, 1);
+    assert.equal(JSON.parse(result.stderr).manza_version, "2026-04-29");
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("the zazu shim prints a deprecation notice and then runs manza", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const result = await runCli(["--version"], { configHome, script: zazuShim });
+    assert.equal(result.stdout, `${cliVersion}\n`);
+    assert.match(result.stderr, /zazu is deprecated/);
+    assert.match(result.stderr, /manza/);
+
+    const help = await runCli(["--help"], { configHome, script: zazuShim });
+    assert.match(help.stdout, /Manza CLI/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("help says Manza CLI and documents the MANZA_* env vars", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const result = await runCli(["--help"], { configHome });
+    assert.match(result.stdout, /^Manza CLI/);
+    assert.match(result.stdout, /Env: MANZA_API_KEY/);
+    assert.match(result.stdout, /Manza-Version header\. Env: MANZA_API_VERSION/);
+    assert.match(result.stdout, /Default: https:\/\/ma\.manza\.finance/);
+    assert.doesNotMatch(result.stdout, /zazu/i);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+async function runCli(args, { configHome, reject = true, env: extraEnv = {}, script = cli } = {}) {
   const env = {
     ...process.env,
     XDG_CONFIG_HOME: configHome,
-    ZAZU_API_KEY: "",
-    ZAZU_BASE_URL: "",
-    ZAZU_VERSION: "",
+    ...BLANK_ENV,
     ...extraEnv,
   };
 
   try {
-    const result = await execFileAsync(runtime, [cli, ...args], { env });
+    const result = await execFileAsync(runtime, [script, ...args], { env });
     return { ...result, code: 0 };
   } catch (error) {
     if (reject) throw error;
@@ -1148,9 +1372,7 @@ async function runCliWithInput(args, input, { configHome, reject = true, timeout
   const env = {
     ...process.env,
     XDG_CONFIG_HOME: configHome,
-    ZAZU_API_KEY: "",
-    ZAZU_BASE_URL: "",
-    ZAZU_VERSION: "",
+    ...BLANK_ENV,
   };
 
   return new Promise((resolve, rejectPromise) => {
@@ -1207,7 +1429,7 @@ async function runCliWithInput(args, input, { configHome, reject = true, timeout
 }
 
 async function tempConfigHome() {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "zazu-cli-test-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "manza-cli-test-"));
   return dir;
 }
 
