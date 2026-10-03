@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -234,6 +235,8 @@ func writeValue(buf *bytes.Buffer, value any, pretty bool, indent string) {
 			buf.WriteString("\n" + indent)
 		}
 		buf.WriteByte('}')
+	default:
+		panic(fmt.Sprintf("stringify: unsupported type %T", value))
 	}
 }
 

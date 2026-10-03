@@ -279,12 +279,32 @@ func (s *sender) requestQuery(req *apiRequest, query *object) (*object, error) {
 	return out, nil
 }
 
-// withQuery appends a serialized query to a path that may already have one.
+// withQuery appends a serialized query to a path that may already have one
+// (a raw `manza request` path). That existing query is percent-encoded the
+// way new URL() did in 1.x, so "?s=a b" goes out as "?s=a%20b".
 func withQuery(path, query string) string {
-	if query != "" && strings.Contains(path, "?") {
-		return path + "&" + query[1:]
+	if base, existing, ok := strings.Cut(path, "?"); ok {
+		path = base + "?" + encodeQuery(existing)
+		if query != "" {
+			return path + "&" + query[1:]
+		}
+		return path
 	}
 	return path + query
+}
+
+// encodeQuery applies the WHATWG query percent-encode set (special schemes).
+func encodeQuery(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c <= 0x20 || c >= 0x7f || strings.IndexByte("\"#<>'", c) >= 0 {
+			b.WriteString("%" + strings.ToUpper(hexByte(c)))
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 func (s *sender) handleError(err error) error {
