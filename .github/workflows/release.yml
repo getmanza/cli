@@ -28,9 +28,9 @@ jobs:
           bun-version-file: ".bun-version"
 
       - name: Install dependencies
-        # Required so bun build / bun test can resolve @getzazu/sdk
+        # Required so bun build / bun test can resolve @getmanza/sdk
         # (a runtime dep, not a stdlib module). Same omission we hit
-        # on the zazu-ts release workflow.
+        # on the manza-ts release workflow.
         run: bun install --frozen-lockfile
 
       - name: Verify tag matches package.json version
@@ -52,16 +52,16 @@ jobs:
         # --compile` regressions before we publish broken installs to
         # GitHub Releases / npm / Homebrew.
         #
-        # SDK ↔ API contract drift is caught upstream: zazu-ruby
+        # SDK ↔ API contract drift is caught upstream: manza-ruby
         # records cassettes against the live staging API on every
-        # release, and zazu-ts (and therefore the cli, via its SDK
+        # release, and manza-ts (and therefore the cli, via its SDK
         # dep) replays those cassettes. We don't repeat a third live
         # check here.
         run: |
           set -euo pipefail
           bun run compile
-          ./dist/zazu --version
-          ./dist/zazu --help > /dev/null
+          ./dist/manza --version
+          ./dist/manza --help > /dev/null
 
       - name: Cross-compile binaries
         run: bun run build
@@ -69,9 +69,9 @@ jobs:
       - name: Upload binaries (workflow artifact)
         uses: actions/upload-artifact@v7
         with:
-          name: zazu-cli-binaries
+          name: manza-cli-binaries
           path: |
-            dist/zazu-*
+            dist/manza-*
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
@@ -88,14 +88,14 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v8
         with:
-          name: zazu-cli-binaries
+          name: manza-cli-binaries
           path: dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/zazu-*
+            dist/manza-*
             dist/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -133,7 +133,7 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v8
         with:
-          name: zazu-cli-binaries
+          name: manza-cli-binaries
           path: dist
 
       - name: Publish per-platform packages and the parent package
@@ -171,10 +171,10 @@ jobs:
             --pattern SHA256SUMS \
             --output SHA256SUMS
 
-          sha_darwin_arm64="$(awk '/zazu-darwin-arm64$/ {print $1}' SHA256SUMS)"
-          sha_darwin_x64="$(awk '/zazu-darwin-x64$/ {print $1}' SHA256SUMS)"
-          sha_linux_arm64="$(awk '/zazu-linux-arm64$/ {print $1}' SHA256SUMS)"
-          sha_linux_x64="$(awk '/zazu-linux-x64$/ {print $1}' SHA256SUMS)"
+          sha_darwin_arm64="$(awk '/manza-darwin-arm64$/ {print $1}' SHA256SUMS)"
+          sha_darwin_x64="$(awk '/manza-darwin-x64$/ {print $1}' SHA256SUMS)"
+          sha_linux_arm64="$(awk '/manza-linux-arm64$/ {print $1}' SHA256SUMS)"
+          sha_linux_x64="$(awk '/manza-linux-x64$/ {print $1}' SHA256SUMS)"
 
           # Fail loud if any expected checksum is missing, instead of
           # silently writing a broken Homebrew formula with empty
@@ -198,57 +198,66 @@ jobs:
           cd tap
 
           mkdir -p Formula
-          cat > Formula/zazu.rb <<RUBY
+          cat > Formula/manza.rb <<RUBY
           # typed: false
           # frozen_string_literal: true
 
-          class Zazu < Formula
-            desc "Command-line interface for the Zazu API"
+          class Manza < Formula
+            desc "Command-line interface for the Manza API"
             homepage "https://github.com/getmanza/cli"
             version "${version}"
             license "MIT"
 
             on_macos do
               on_arm do
-                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-darwin-arm64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/manza-darwin-arm64"
                 sha256 "${sha_darwin_arm64}"
               end
               on_intel do
-                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-darwin-x64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/manza-darwin-x64"
                 sha256 "${sha_darwin_x64}"
               end
             end
 
             on_linux do
               on_arm do
-                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-linux-arm64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/manza-linux-arm64"
                 sha256 "${sha_linux_arm64}"
               end
               on_intel do
-                url "https://github.com/getmanza/cli/releases/download/v#{version}/zazu-linux-x64"
+                url "https://github.com/getmanza/cli/releases/download/v#{version}/manza-linux-x64"
                 sha256 "${sha_linux_x64}"
               end
             end
 
             def install
               binary = case
-                       when OS.mac? && Hardware::CPU.arm? then "zazu-darwin-arm64"
-                       when OS.mac? && Hardware::CPU.intel? then "zazu-darwin-x64"
-                       when OS.linux? && Hardware::CPU.arm? then "zazu-linux-arm64"
-                       when OS.linux? && Hardware::CPU.intel? then "zazu-linux-x64"
+                       when OS.mac? && Hardware::CPU.arm? then "manza-darwin-arm64"
+                       when OS.mac? && Hardware::CPU.intel? then "manza-darwin-x64"
+                       when OS.linux? && Hardware::CPU.arm? then "manza-linux-arm64"
+                       when OS.linux? && Hardware::CPU.intel? then "manza-linux-x64"
                        end
-              bin.install binary => "zazu"
+              bin.install binary => "manza"
             end
 
             test do
-              assert_match version.to_s, shell_output("#{bin}/zazu --version")
+              assert_match version.to_s, shell_output("#{bin}/manza --version")
             end
           end
           RUBY
 
+          # The zazu formula stays installable but frozen at 0.x; point
+          # its users at manza. It ships no zazu shim of its own: a
+          # bin/zazu in manza.rb would collide with the old formula's
+          # link for anyone who still has it installed.
+          if [ -f Formula/zazu.rb ] && ! grep -q 'deprecate!' Formula/zazu.rb; then
+            sed -i "/^  license /a\\  deprecate! date: \"$(date -u +%F)\", because: \"has been renamed to manza; run: brew install getmanza/tap/manza\"" Formula/zazu.rb
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/zazu.rb
+          git add Formula/manza.rb
+          if [ -f Formula/zazu.rb ]; then git add Formula/zazu.rb; fi
 
           # Make the tap update idempotent: if the formula is already
           # exactly what we'd write (e.g. job re-run after a transient
@@ -259,5 +268,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "zazu ${version}"
+          git commit -m "manza ${version}"
           git push

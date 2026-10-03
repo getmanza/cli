@@ -2,7 +2,7 @@
 description: "Address CodeRabbit feedback on a PR. Verify each finding against current code, fix only still-valid issues, skip the rest with a brief reason, keep changes minimal, and validate."
 model: opus
 argument-hint: "PR number (e.g., 1690 or #1690)"
-allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(git log:*), Bash(git blame:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/zazu:*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(git log:*), Bash(git blame:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/manza:*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 # Address CodeRabbit Findings: $ARGUMENTS
@@ -148,7 +148,7 @@ Re-run the GraphQL query from Phase 1. The result should be empty (or contain on
 
 CodeRabbit doesn't know:
 - The Karpathy guidelines we follow (no speculative abstractions, surgical changes).
-- That the CLI is a thin wrapper over `@getzazu/sdk` — sometimes it suggests hand-rolling logic the SDK already handles.
+- That the CLI is a thin wrapper over `@getmanza/sdk` — sometimes it suggests hand-rolling logic the SDK already handles.
 - The per-platform package layout in `scripts/npm-publish` — sometimes it suggests "simplifying" by bundling the binary into the parent package.
 - The `bun:test` API differences from Jest — its suggestions are sometimes Jest-flavored.
 

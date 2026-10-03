@@ -2,7 +2,7 @@
 description: "Use when CI checks are failing on a PR — fetches failure logs, diagnoses root causes, implements fixes, pushes until CI is green."
 model: opus
 argument-hint: "PR number (e.g., 1690 or #1690)"
-allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(gh run view:*), Bash(git log:*), Bash(git diff:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/zazu:*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh api:*), Bash(gh run view:*), Bash(git log:*), Bash(git diff:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/manza:*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 # Fix GitHub CI Failures: $ARGUMENTS
@@ -31,7 +31,7 @@ Categorize:
 - **Typecheck failures** — `tsc --noEmit` errors
 - **Bundle / compile failures** — `bun build --target=bun` or `bun build --compile` failed
 - **Cross-compile failures** — `scripts/build` failed for one of the four targets
-- **Smoke-test failures** — `./dist/zazu --version` or staging API smoke test
+- **Smoke-test failures** — `./dist/manza --version` or staging API smoke test
 - **npm-publish failures** — OIDC, sigstore, per-platform package layout
 - **Security failures** — `npm audit signatures` or similar
 
@@ -58,7 +58,7 @@ bun run check
 
 # Standalone binary
 bun run compile
-./dist/zazu --version
+./dist/manza --version
 
 # Cross-compile (slow — only if the build job failed)
 bun run build
@@ -71,7 +71,7 @@ If you can't reproduce locally, the failure is environmental (CI-only):
 - Different Bun version → check `.bun-version` and the workflow `bun-version-file`
 - Missing dependency → did `bun install --frozen-lockfile` run before the failing step?
 - Network → external service (npm registry, staging API) hiccup
-- Secret missing → e.g. trusted-publishing OIDC environment, ZAZU_STAGING_* secrets
+- Secret missing → e.g. trusted-publishing OIDC environment, MANZA_STAGING_* secrets (or the legacy ZAZU_STAGING_* ones)
 - Cross-compile target — need a Linux runner for `linux-*` targets
 
 ### Find the root cause
@@ -81,7 +81,7 @@ Apply the five-whys ladder until you reach a fix point that prevents the same cl
 - Disable the failing test
 - Add a `// biome-ignore` to silence the linter
 - Cast away the type error with `as any`
-- Catch and swallow `ZazuError` to make a smoke test pass
+- Catch and swallow `ManzaError` to make a smoke test pass
 
 These hide the failure; the underlying bug returns elsewhere.
 
@@ -103,7 +103,7 @@ The CI step that failed has a local equivalent — run it, get green:
 | `bun test` | `bun test` |
 | `bun run compile` | `bun run compile` |
 | `bun run build` | `bun run build` (slow — all 4 targets) |
-| `./dist/zazu --version` | `./dist/zazu --version` |
+| `./dist/manza --version` | `./dist/manza --version` |
 | Smoke test against staging | requires secrets — skip locally, verify via post-push CI |
 | `scripts/npm-publish` | requires NODE_AUTH_TOKEN + VERSION — verify via release workflow |
 
@@ -149,7 +149,7 @@ If the failure was CI-config drift (workflow YAML out of sync with reality), als
 
 ## Common patterns and fixes
 
-### Bundle check fails with "Could not resolve: '@getzazu/sdk'"
+### Bundle check fails with "Could not resolve: '@getmanza/sdk'"
 
 CI lacks a `bun install --frozen-lockfile` step before `bun run check`. Add one to the workflow.
 

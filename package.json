@@ -1,9 +1,10 @@
 {
-  "name": "@getzazu/cli",
+  "name": "@getmanza/cli",
   "version": "0.3.0",
-  "description": "Command-line interface for the Zazu API.",
+  "description": "Command-line interface for the Manza API.",
   "type": "module",
   "license": "MIT",
+  "author": "Manza <hello@get-manza.com>",
   "homepage": "https://github.com/getmanza/cli#readme",
   "repository": {
     "type": "git",
@@ -13,16 +14,18 @@
     "url": "https://github.com/getmanza/cli/issues"
   },
   "keywords": [
-    "zazu",
+    "manza",
     "cli",
     "api",
     "invoices",
     "payments"
   ],
   "bin": {
+    "manza": "./bin/manza.ts",
     "zazu": "./bin/zazu.ts"
   },
   "files": [
+    "bin/manza.ts",
     "bin/zazu.ts",
     "README.md",
     "LICENSE",
@@ -40,10 +43,10 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "start": "bun ./bin/zazu.ts",
+    "start": "bun ./bin/manza.ts",
     "typecheck": "tsc --noEmit",
-    "check": "bun build --target=bun --outfile=dist/.check/zazu-cli-check ./bin/zazu.ts",
-    "compile": "bun build --compile --outfile=dist/zazu ./bin/zazu.ts",
+    "check": "bun build --target=bun --outfile=dist/.check/manza-cli-check ./bin/manza.ts",
+    "compile": "bun build --compile --outfile=dist/manza ./bin/manza.ts",
     "build": "scripts/build",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
@@ -60,6 +63,6 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
-    "@getzazu/sdk": "^0.3.0"
+    "@getmanza/sdk": "^1.0.0"
   }
 }

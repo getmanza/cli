@@ -2,7 +2,7 @@
 description: "Use when a PR has unresolved review comments — evaluates each, implements valid fixes minimally, pushes back on incorrect suggestions, resolves threads."
 model: opus
 argument-hint: "PR number (e.g., 1690 or #1690)"
-allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh pr comment:*), Bash(gh api:*), Bash(git log:*), Bash(git blame:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/zazu:*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr diff:*), Bash(gh pr comment:*), Bash(gh api:*), Bash(git log:*), Bash(git blame:*), Bash(git push:*), Bash(git commit:*), Bash(git add:*), Bash(bun:*), Bash(./dist/manza:*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 # Review GitHub PR Comments: $ARGUMENTS

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Publish the Zazu CLI to npm using the per-platform package pattern.
+# Publish the Manza CLI to npm using the per-platform package pattern.
 #
 # Layout:
-#   @getzazu/cli                  - parent package (no binary, just a JS shim)
-#   @getzazu/cli-darwin-arm64     - holds the darwin-arm64 binary
-#   @getzazu/cli-darwin-x64       - holds the darwin-x64 binary
-#   @getzazu/cli-linux-arm64      - holds the linux-arm64 binary
-#   @getzazu/cli-linux-x64        - holds the linux-x64 binary
+#   @getmanza/cli                  - parent package (no binary, just JS shims)
+#   @getmanza/cli-darwin-arm64     - holds the darwin-arm64 binary
+#   @getmanza/cli-darwin-x64       - holds the darwin-x64 binary
+#   @getmanza/cli-linux-arm64      - holds the linux-arm64 binary
+#   @getmanza/cli-linux-x64        - holds the linux-x64 binary
+#
+# The parent installs two commands: `manza`, and `zazu`, a deprecated
+# alias for all of 1.x that prints a notice and then runs `manza`.
 #
 # npm only installs the platform package matching the user's OS+CPU
 # (via `os` and `cpu` fields). The parent package depends on all four
@@ -15,8 +18,8 @@
 # This is the same pattern used by esbuild, swc, biome, turbo, etc.
 #
 # Required env: VERSION (e.g. v0.2.0).
-# Required input files in dist/: zazu-darwin-arm64, zazu-darwin-x64,
-# zazu-linux-arm64, zazu-linux-x64.
+# Required input files in dist/: manza-darwin-arm64, manza-darwin-x64,
+# manza-linux-arm64, manza-linux-x64.
 #
 # Auth: each of the five published packages needs an npm trusted-
 # publisher binding pointing at this repo's release.yml workflow in
@@ -59,15 +62,16 @@ for arch in "${!PLATFORMS[@]}"; do
   read -r os cpu <<< "${PLATFORMS[$arch]}"
   pkg_dir="npm-dist/cli-${arch}"
   mkdir -p "${pkg_dir}/bin"
-  cp "dist/zazu-${arch}" "${pkg_dir}/bin/zazu"
-  chmod +x "${pkg_dir}/bin/zazu"
+  cp "dist/manza-${arch}" "${pkg_dir}/bin/manza"
+  chmod +x "${pkg_dir}/bin/manza"
 
   cat > "${pkg_dir}/package.json" <<JSON
 {
-  "name": "@getzazu/cli-${arch}",
+  "name": "@getmanza/cli-${arch}",
   "version": "${VERSION}",
-  "description": "Zazu CLI binary for ${arch}",
+  "description": "Manza CLI binary for ${arch}",
   "license": "MIT",
+  "author": "Manza <hello@get-manza.com>",
   "homepage": "https://github.com/getmanza/cli",
   "repository": {
     "type": "git",
@@ -85,14 +89,14 @@ for arch in "${!PLATFORMS[@]}"; do
 JSON
 
   cat > "${pkg_dir}/README.md" <<MD
-# @getzazu/cli-${arch}
+# @getmanza/cli-${arch}
 
-Platform binary for [\`@getzazu/cli\`](https://www.npmjs.com/package/@getzazu/cli) on ${os}/${cpu}.
+Platform binary for [\`@getmanza/cli\`](https://www.npmjs.com/package/@getmanza/cli) on ${os}/${cpu}.
 
-This package only contains the prebuilt binary. You almost certainly want to install \`@getzazu/cli\` instead, which selects the correct platform package automatically.
+This package only contains the prebuilt binary. You almost certainly want to install \`@getmanza/cli\` instead, which selects the correct platform package automatically.
 MD
 
-  echo "==> publishing @getzazu/cli-${arch}@${VERSION}"
+  echo "==> publishing @getmanza/cli-${arch}@${VERSION}"
   # npx --yes pulls a fresh, OIDC-capable npm (>= 11.5.1). The
   # bundled npm with Node 22's setup-node action is too old; updating
   # it in place via `npm install -g npm@latest` is unreliable when
@@ -106,24 +110,25 @@ mkdir -p "${parent_dir}/bin"
 
 cat > "${parent_dir}/package.json" <<JSON
 {
-  "name": "@getzazu/cli",
+  "name": "@getmanza/cli",
   "version": "${VERSION}",
-  "description": "Command-line interface for the Zazu API",
+  "description": "Command-line interface for the Manza API",
   "license": "MIT",
+  "author": "Manza <hello@get-manza.com>",
   "homepage": "https://github.com/getmanza/cli#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/getmanza/cli.git"
   },
   "bugs": { "url": "https://github.com/getmanza/cli/issues" },
-  "keywords": ["zazu", "cli", "api", "invoices", "payments"],
-  "bin": { "zazu": "bin/zazu.js" },
+  "keywords": ["manza", "cli", "api", "invoices", "payments"],
+  "bin": { "manza": "bin/manza.js", "zazu": "bin/zazu.js" },
   "files": ["bin"],
   "optionalDependencies": {
-    "@getzazu/cli-darwin-arm64": "${VERSION}",
-    "@getzazu/cli-darwin-x64": "${VERSION}",
-    "@getzazu/cli-linux-arm64": "${VERSION}",
-    "@getzazu/cli-linux-x64": "${VERSION}"
+    "@getmanza/cli-darwin-arm64": "${VERSION}",
+    "@getmanza/cli-darwin-x64": "${VERSION}",
+    "@getmanza/cli-linux-arm64": "${VERSION}",
+    "@getmanza/cli-linux-x64": "${VERSION}"
   },
   "publishConfig": {
     "access": "public",
@@ -134,7 +139,7 @@ cat > "${parent_dir}/package.json" <<JSON
 JSON
 
 # Resolver shim - finds the right platform package and execs its binary.
-cat > "${parent_dir}/bin/zazu.js" <<'JS'
+cat > "${parent_dir}/bin/manza.js" <<'JS'
 #!/usr/bin/env node
 "use strict";
 
@@ -142,43 +147,53 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
 const map = {
-  "darwin-arm64": "@getzazu/cli-darwin-arm64",
-  "darwin-x64": "@getzazu/cli-darwin-x64",
-  "linux-arm64": "@getzazu/cli-linux-arm64",
-  "linux-x64": "@getzazu/cli-linux-x64",
+  "darwin-arm64": "@getmanza/cli-darwin-arm64",
+  "darwin-x64": "@getmanza/cli-darwin-x64",
+  "linux-arm64": "@getmanza/cli-linux-arm64",
+  "linux-x64": "@getmanza/cli-linux-x64",
 };
 
 const key = `${process.platform}-${process.arch}`;
 const pkg = map[key];
 
 if (!pkg) {
-  console.error(`zazu: no prebuilt binary for ${key}.`);
+  console.error(`manza: no prebuilt binary for ${key}.`);
   console.error("Supported: darwin-arm64, darwin-x64, linux-arm64, linux-x64.");
   process.exit(1);
 }
 
 let binary;
 try {
-  binary = path.join(path.dirname(require.resolve(`${pkg}/package.json`)), "bin", "zazu");
+  binary = path.join(path.dirname(require.resolve(`${pkg}/package.json`)), "bin", "manza");
 } catch {
-  console.error(`zazu: optional dependency ${pkg} was not installed.`);
-  console.error("Try reinstalling: npm install -g @getzazu/cli");
+  console.error(`manza: optional dependency ${pkg} was not installed.`);
+  console.error("Try reinstalling: npm install -g @getmanza/cli");
   process.exit(1);
 }
 
 const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
 if (result.error) {
-  console.error(`zazu: failed to launch binary: ${result.error.message}`);
+  console.error(`manza: failed to launch binary: ${result.error.message}`);
   process.exit(1);
 }
 process.exit(result.status ?? 0);
+JS
+chmod +x "${parent_dir}/bin/manza.js"
+
+# Deprecated `zazu` command for all of 1.x: print a notice, then run manza.
+cat > "${parent_dir}/bin/zazu.js" <<'JS'
+#!/usr/bin/env node
+"use strict";
+
+console.error("zazu is deprecated and will be removed in 2.0. Use manza instead.");
+require("./manza.js");
 JS
 chmod +x "${parent_dir}/bin/zazu.js"
 
 # Copy the README into the parent package so it shows on npmjs.com.
 cp README.md "${parent_dir}/README.md"
 
-echo "==> publishing @getzazu/cli@${VERSION}"
+echo "==> publishing @getmanza/cli@${VERSION}"
 (cd "${parent_dir}" && npx --yes npm@latest publish)
 
 echo "==> npm publish complete"

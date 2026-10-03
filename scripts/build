@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-compile the Zazu CLI to standalone binaries for every supported
+# Cross-compile the Manza CLI to standalone binaries for every supported
 # platform. Each target produces a single self-contained executable that
 # bundles the Bun runtime, so users do not need Bun, Node, or Ruby.
 #
@@ -28,7 +28,7 @@ else
 fi
 
 for arch in "${TARGETS[@]}"; do
-  out="zazu-${arch}"
+  out="manza-${arch}"
   echo "==> building $out (target=bun-${arch})"
   bun build \
     --compile \
@@ -36,16 +36,16 @@ for arch in "${TARGETS[@]}"; do
     --bytecode \
     --target="bun-${arch}" \
     --outfile "dist/${out}" \
-    bin/zazu.ts
+    bin/manza.ts
 done
 
-# Generate SHA256 checksums for this invocation's targets only — `zazu-*`
+# Generate SHA256 checksums for this invocation's targets only — `manza-*`
 # would also pick up stale binaries from a prior multi-target build.
 (
   cd dist
   : > SHA256SUMS
   for arch in "${TARGETS[@]}"; do
-    shasum -a 256 "zazu-${arch}" >> SHA256SUMS
+    shasum -a 256 "manza-${arch}" >> SHA256SUMS
   done
 )
 

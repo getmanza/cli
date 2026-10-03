@@ -2,7 +2,7 @@
 description: "Executes full autonomous engineering workflow with verification. Use when implementing complete features, tackling GitHub issues, or running end-to-end development cycles."
 model: opus
 argument-hint: "GitHub issue number/URL or feature description"
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(./dist/zazu:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(./dist/manza:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
 ---
 
 # LFG — full autonomous workflow
@@ -39,8 +39,8 @@ Use `TaskCreate` to record steps; update with `TaskUpdate` as you go.
 ## Phase 2: Explore
 
 1. Find related files (Glob/Grep, or the Explore agent, `model: haiku`, for broad searches).
-2. Read existing patterns in the same area of `bin/zazu.ts`.
-3. Understand which SDK methods to call — the CLI is a thin wrapper over `@getzazu/sdk`.
+2. Read existing patterns in the same area of `bin/manza.ts`.
+3. Understand which SDK methods to call — the CLI is a thin wrapper over `@getmanza/sdk`.
 4. Check existing test coverage in `test/cli.test.js`.
 
 ## Phase 3: Plan
@@ -68,8 +68,8 @@ Project conventions:
 
 | Use | Instead of |
 |-----|-----------|
-| `Zazu` client + resource methods (`zazu.customers.list(...)`) | hand-rolled `fetch` |
-| `instanceof ZazuError` (and subclasses) | status-code switching |
+| `Manza` client + resource methods (`manza.customers.list(...)`) | hand-rolled `fetch` |
+| `instanceof ManzaError` (and subclasses) | status-code switching |
 | `for await (const item of page.records())` | manual cursor loop |
 | `printError(error, format)` | hand-rolling stderr JSON |
 | `import type { ... }` for type-only imports | mixed runtime + type imports |
@@ -88,7 +88,7 @@ bun run check:all   # typecheck + lint + test
 bun run lint:fix    # auto-apply Biome safe fixes
 bun run check       # bundle check (target=bun)
 bun run compile     # standalone binary
-./dist/zazu --version   # smoke
+./dist/manza --version   # smoke
 ```
 
 ### 4.5 Repeat
@@ -110,7 +110,7 @@ For bug fixes, investigate before implementing:
 - `?.` chaining without understanding why the value is undefined
 - `try/catch` that swallows the error
 - Type assertions (`as Foo`) instead of fixing the producer
-- Catching `ZazuError` and re-throwing with a generic message — preserve the subclass
+- Catching `ManzaError` and re-throwing with a generic message — preserve the subclass
 
 ## Phase 6: Verify
 
@@ -119,7 +119,7 @@ All must pass before committing:
 ```bash
 bun run check:all                    # typecheck + lint + test
 bun run compile                      # binary builds
-./dist/zazu --version                # binary runs
+./dist/manza --version                # binary runs
 ```
 
 Re-read the original requirements: would the requester consider this fully resolved? Have you addressed the root cause? Do the tests prove the fix?

@@ -1,6 +1,6 @@
-# @getzazu/cli
+# @getmanza/cli
 
-Command-line interface for the Zazu API. Single-file TypeScript source in `bin/zazu.ts`, compiled to a self-contained Bun binary so end users don't need a runtime installed.
+Command-line interface for the Manza API (renamed from zazu in 1.0). Single-file TypeScript source in `bin/manza.ts`, compiled to a self-contained Bun binary so end users don't need a runtime installed.
 
 ## Stack
 
@@ -10,42 +10,43 @@ Command-line interface for the Zazu API. Single-file TypeScript source in `bin/z
 | Build / package mgmt / test runner | Bun 1.3+ | `bun build`, `bun test`, `bun install` |
 | Lint + format | Biome 2.x | `biome.json`. Replaces eslint + prettier |
 | Type-check | `tsc --noEmit` | Bun doesn't do this; we keep tsc for it |
-| HTTP / errors / pagination | `@getzazu/sdk` | The CLI is a thin wrapper over the SDK |
+| HTTP / errors / pagination | `@getmanza/sdk` | The CLI is a thin wrapper over the SDK |
 | Distribution | Standalone binaries via `bun build --compile` + per-platform npm packages | `scripts/build`, `scripts/npm-publish` |
 
 ## Public surface
 
 | Command | Purpose |
 |---|---|
-| `zazu login` / `logout` / `config` | API key + base URL storage in `~/.config/zazu/config.json` |
-| `zazu entity get` | Fetch the entity record |
-| `zazu accounts list/get/transactions/transaction` | Account + transaction reads |
-| `zazu customers list/get/create/update/delete` | Customer CRUD |
-| `zazu invoices list/get/create/update/send/mark-as-paid/cancel/credit-note/delete/payment-link` | Invoice ops |
-| `zazu payment-links list/get/create/cancel` | Payment-link ops |
-| `zazu webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable` | Webhook config |
-| `zazu checkout-sessions create/get` | Hosted checkout sessions |
-| `zazu transfers create/get/authorize/decline/sign` | Transfer drafts; `sign` computes the authorization signature locally from `--secret-env` |
-| `zazu beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
-| `zazu payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
-| `zazu request <method> <path>` | Escape hatch for raw API calls |
+| `manza login` / `logout` / `config` | API key + base URL storage in `~/.config/manza/config.json` (falls back to reading `~/.config/zazu/config.json`) |
+| `manza entity get` | Fetch the entity record |
+| `manza accounts list/get/transactions/transaction` | Account + transaction reads |
+| `manza customers list/get/create/update/delete` | Customer CRUD |
+| `manza invoices list/get/create/update/send/mark-as-paid/cancel/credit-note/delete/payment-link` | Invoice ops |
+| `manza payment-links list/get/create/cancel` | Payment-link ops |
+| `manza webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable` | Webhook config |
+| `manza checkout-sessions create/get` | Hosted checkout sessions |
+| `manza transfers create/get/authorize/decline/sign` | Transfer drafts; `sign` computes the authorization signature locally from `--secret-env` |
+| `manza beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
+| `manza payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
+| `manza request <method> <path>` | Escape hatch for raw API calls |
 
 Global flags: `--api-key`, `--api-key-stdin`, `--base-url`, `--api-version`, `--timeout-ms`, `--format` (json/pretty/raw), `--output`, `--debug`, `--help`, `--version`, `--quiet`. List flags add `--all`, `--cursor`, `--limit`, `--max-items`.
 
 ## How to work in this codebase
 
-1. **The CLI is a thin wrapper.** HTTP, retries, pagination, error mapping, JSON parsing — all in `@getzazu/sdk`. The CLI's job is argv parsing, output formatting, token storage, and login/config commands.
+1. **The CLI is a thin wrapper.** HTTP, retries, pagination, error mapping, JSON parsing — all in `@getmanza/sdk`. The CLI's job is argv parsing, output formatting, token storage, and login/config commands.
 2. **Tests are integration-style.** `test/cli.test.js` spawns the actual CLI binary and asserts stdout/stderr/exit codes. No unit tests on individual functions — the contract is at the CLI boundary.
-3. **One file in `bin/`, by design.** `bin/zazu.ts` is intentionally a single TypeScript file. Bun compiles it directly. Resist the urge to split it into modules until there's a forcing function.
+3. **One file in `bin/`, by design.** `bin/manza.ts` is intentionally a single TypeScript file; `bin/zazu.ts` is only the deprecated-name shim (removed in 2.0). Bun compiles it directly. Resist the urge to split it into modules until there's a forcing function.
 4. **Lint must be green.** `bun run lint` runs Biome with `--error-on-warnings`. Don't add `// biome-ignore` to silence — fix the issue.
 
 ## Critical rules
 
-- **Use the SDK.** Don't hand-roll `fetch` calls. Don't parse `error.message` for status codes — use `instanceof ZazuValidationError` etc.
+- **Use the SDK.** Don't hand-roll `fetch` calls. Don't parse `error.message` for status codes — use `instanceof ManzaValidationError` etc.
 - **`bun run check:all` before every commit.** Runs typecheck + lint + test. CI runs the same commands.
-- **No long-lived `NPM_TOKEN`.** Releases publish via npm OIDC trusted publishing through the `release` GitHub environment. Each of the **five** published packages — `@getzazu/cli`, `@getzazu/cli-darwin-arm64`, `@getzazu/cli-darwin-x64`, `@getzazu/cli-linux-arm64`, `@getzazu/cli-linux-x64` — has its own trusted-publisher binding at `https://www.npmjs.com/package/<name>/access`. All five point at this repo's `release.yml` workflow + `release` environment. Adding a new platform target means adding a fifth, sixth, etc. binding before its first publish.
-- **Per-platform packages, not a JS shim.** The published `@getzazu/cli` is a resolver that delegates to `@getzazu/cli-darwin-arm64` / `cli-darwin-x64` / `cli-linux-arm64` / `cli-linux-x64`. Same pattern as esbuild, swc, biome, turbo. Don't bundle the binary into the parent package.
-- **Backwards-compatible config layout.** `~/.config/zazu/config.json` is read by every CLI version. Don't change the schema without a migration path.
+- **No long-lived `NPM_TOKEN`.** Releases publish via npm OIDC trusted publishing through the `release` GitHub environment. Each of the **five** published packages — `@getmanza/cli`, `@getmanza/cli-darwin-arm64`, `@getmanza/cli-darwin-x64`, `@getmanza/cli-linux-arm64`, `@getmanza/cli-linux-x64` — has its own trusted-publisher binding at `https://www.npmjs.com/package/<name>/access`. All five point at this repo's `release.yml` workflow + `release` environment. Adding a new platform target means adding a fifth, sixth, etc. binding before its first publish.
+- **Per-platform packages, not a JS shim.** The published `@getmanza/cli` is a resolver that delegates to `@getmanza/cli-darwin-arm64` / `cli-darwin-x64` / `cli-linux-arm64` / `cli-linux-x64`. Same pattern as esbuild, swc, biome, turbo. Don't bundle the binary into the parent package.
+- **Backwards-compatible config layout.** `~/.config/manza/config.json` is read by every 1.x+ CLI; for all of 1.x the CLI falls back to reading `~/.config/zazu/config.json` and copies it to the manza path on first write. Don't change the schema without a migration path.
+- **Legacy names until 2.0.** The `zazu` command (npm + source shim), the `ZAZU_*` env vars (with a deprecation warning) and the zazu config path all keep working for 1.x. Remove them together in 2.0.
 - **Never escape backticks in PR bodies.** With `<<'EOF'` (single-quoted heredoc) the shell passes everything through verbatim. Typing `` \` `` produces literal `` \` `` in the rendered PR. See "PR descriptions" below.
 
 ## PR descriptions
@@ -129,8 +130,8 @@ bun run lint:fix                 # auto-apply Biome safe fixes
 
 # Build verification
 bun run check                    # bundle check (target=bun)
-bun run compile                  # standalone binary at dist/zazu
-./dist/zazu --version            # smoke test
+bun run compile                  # standalone binary at dist/manza
+./dist/manza --version           # smoke test
 bun run build                    # cross-compile all 4 targets (slow)
 
 # Release (after PR merge, from a clean, up-to-date main)
@@ -140,8 +141,8 @@ bin/release minor       # or patch (default), major, an explicit 0.3.0; --force 
 # → bumps package.json, runs check:all, pushes main, publishes the GH release
 # Tag on GitHub triggers .github/workflows/release.yml which:
 #   1. cross-compiles all four binaries
-#   2. publishes the four @getzazu/cli-<arch> platform packages
-#   3. publishes @getzazu/cli (the resolver shim)
+#   2. publishes the four @getmanza/cli-<arch> platform packages
+#   3. publishes @getmanza/cli (the resolver shim)
 ```
 
 ## Models
@@ -162,10 +163,10 @@ These live in `.claude/commands/` and are available in any Claude Code session:
 
 ## Cross-SDK contract
 
-The CLI consumes `@getzazu/sdk`, which mirrors `zazu-ruby`'s public surface and replays its cassettes. If the wire format breaks, it's coordinated across at least three repos: zazu-ruby (records), zazu-ts (consumes), zazu-cli (consumes).
+The CLI consumes `@getmanza/sdk`, which mirrors `manza-ruby`'s public surface and replays its cassettes. If the wire format breaks, it's coordinated across at least three repos: manza-ruby (records), manza-ts (consumes), cli (consumes).
 
 ## Repository links
 
-- Ruby SDK (reference): https://github.com/getzazu/zazu-ruby
-- TS SDK: https://github.com/getzazu/zazu-ts (https://www.npmjs.com/package/@getzazu/sdk)
-- This repo: https://github.com/getzazu/cli (https://www.npmjs.com/package/@getzazu/cli)
+- Ruby SDK (reference): https://github.com/getmanza/manza-ruby
+- TS SDK: https://github.com/getmanza/manza-ts (https://www.npmjs.com/package/@getmanza/sdk)
+- This repo: https://github.com/getmanza/cli (https://www.npmjs.com/package/@getmanza/cli)
