@@ -30,7 +30,7 @@ For each failing check:
 2. Reproduce locally:
    - Test failure → `bun run test` (go test, compile, then `test/cli.test.js` against `dist/manza`)
    - Lint failure → `bun run lint` (Biome, `go vet`, `gofmt`)
-   - Cross-compile failure → `scripts/build`
+   - Cross-compile failure → `bun run build` (runs `scripts/build`)
 3. Fix the root cause. Don't:
    - Disable the failing test
    - Add a `// biome-ignore` to silence the linter

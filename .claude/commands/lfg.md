@@ -68,13 +68,13 @@ Project conventions:
 
 | Use | Instead of |
 |-----|-----------|
-| `Manza` client + resource methods (`manza.customers.list(...)`) | hand-rolled `fetch` |
-| `instanceof ManzaError` (and subclasses) | status-code switching |
-| `for await (const item of page.records())` | manual cursor loop |
-| `printError(error, format)` | hand-rolling stderr JSON |
-| `import type { ... }` for type-only imports | mixed runtime + type imports |
-| `bun test` | jest, mocha, vitest |
-| `biome check` | eslint + prettier separately |
+| `manza-go` via `sender.fetch` (`Client.Request` or a typed method) | hand-rolled `net/http` calls |
+| `errors.As(err, &apiErr)` with `*manza.Error` / `Kind` | parsing error strings for status codes |
+| `apiRequest{paginate: true}` via `listRequest` (`sendPaginated` walks cursors) | a new cursor loop per command |
+| `printError` / `printOutput` | hand-rolling stdout/stderr JSON |
+| `*object` + `stringify` from `jsjson.go` | `encoding/json` maps (they sort keys) |
+| a case in `test/cli.test.js` (runs `dist/manza`); `go test` for internals | testing through Go function calls only |
+| `bun run lint` (Biome, `go vet`, `gofmt`) | ad-hoc formatters |
 | `npx --yes npm@latest publish` (release path) | `npm install -g npm@latest && npm publish` |
 
 ### 4.3 Refactor

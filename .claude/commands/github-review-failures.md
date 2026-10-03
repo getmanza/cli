@@ -54,7 +54,7 @@ bun run compile
 ./dist/manza --version
 
 # Cross-compile (only if the build job failed)
-scripts/build
+bun run build
 
 # Full pipeline
 bun run check:all
@@ -93,7 +93,7 @@ The CI step that failed has a local equivalent — run it, get green:
 |---|---|
 | `bun run lint` | `bun run lint` |
 | `bun run test` | `bun run test` |
-| `scripts/build` | `scripts/build` (all 4 targets) |
+| `scripts/build` | `bun run build` (all 4 targets) |
 | `./dist/manza --version` | `./dist/manza --version` |
 | Smoke test against staging | requires secrets — skip locally, verify via post-push CI |
 | `scripts/npm-publish` | requires NODE_AUTH_TOKEN + VERSION — verify via release workflow |

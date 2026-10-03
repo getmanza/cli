@@ -17,7 +17,7 @@ All of these fallbacks are removed in 2.0.
 
 ## Install
 
-The CLI ships as a single static Go binary (about 6–7 MB) — no Go, Node, Bun, or Ruby required on the user's machine.
+The CLI ships as a single static Go binary (about 6–7 MB). The Homebrew and direct-download installs need no runtime at all; the npm install needs Node only for the small resolver that launches the binary.
 
 ### Homebrew (macOS / Linux)
 
