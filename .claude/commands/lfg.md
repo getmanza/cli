@@ -2,7 +2,7 @@
 description: "Executes full autonomous engineering workflow with verification. Use when implementing complete features, tackling GitHub issues, or running end-to-end development cycles."
 model: opus
 argument-hint: "GitHub issue number/URL or feature description"
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(./dist/manza:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(bun:*), Bash(go:*), Bash(./dist/manza:*), Bash(git:*), Read, Write, Edit, Glob, Grep, Agent, TaskCreate, TaskUpdate, TaskList
 ---
 
 # LFG — full autonomous workflow
