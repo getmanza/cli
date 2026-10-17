@@ -43,7 +43,7 @@ Global flags: `--api-key`, `--api-key-stdin`, `--base-url`, `--api-version`, `--
 ## Critical rules
 
 - **Use the SDK.** Don't hand-roll `net/http` calls. Don't parse error strings for status codes — use `errors.As` to `*manza.Error` and its `Kind`. The `recorder` transport in `send.go` only observes responses (headers, body in key order) that the SDK doesn't expose.
-- **Reuse the CLI's helpers.** Lists go through `apiRequest{paginate: true}` via `listRequest` (`sendPaginated` walks the cursors), never a new cursor loop per command; output goes through `printError` / `printOutput`, never hand-rolled stdout/stderr JSON; a SDK error keeps its `*manza.Error` and `Kind`, never re-wrapped in a generic message. A test is a case in `test/cli.test.js`; `go test` is for internals.
+- **Reuse the CLI's helpers.** Lists go through `listRequest` (which enables `paginate` only for `--all` or `--max-items`; `sendPaginated` walks the cursors), never a new cursor loop per command; output goes through `printError` / `printOutput`, never hand-rolled stdout/stderr JSON; a SDK error keeps its `*manza.Error` and `Kind`, never re-wrapped in a generic message. A test is a case in `test/cli.test.js`; `go test` is for internals.
 - **`bun run check:all` before every commit.** Runs lint (Biome, `go vet`, `gofmt`) + test (`go test`, compile, CLI suite). CI runs the same commands.
 - **No long-lived `NPM_TOKEN`.** Releases publish via npm OIDC trusted publishing through the `release` GitHub environment. Each of the **five** published packages — `@getmanza/cli`, `@getmanza/cli-darwin-arm64`, `@getmanza/cli-darwin-x64`, `@getmanza/cli-linux-arm64`, `@getmanza/cli-linux-x64` — needs its own trusted-publisher binding at `https://www.npmjs.com/package/<name>/access`, set up and verified before the first 1.0 release (the `@getzazu/*` bindings don't carry over). All five point at this repo's `release.yml` workflow + `release` environment. Adding a new platform target means adding a fifth, sixth, etc. binding before its first publish.
 - **Publish with `npx --yes npm@latest publish`**, not `npm install -g npm@latest && npm publish`, and no `registry-url` on `setup-node`: it writes `_authToken=${NODE_AUTH_TOKEN}` to `.npmrc`, npm then skips OIDC and a trusted-publishing publish returns 404. A user on an OS/arch outside `darwin|linux` × `arm64|x64` gets the shim's clear error; adding a target means `scripts/build` and a new trusted-publisher binding.
@@ -153,7 +153,7 @@ bin/release minor       # or patch (default), major, an explicit 0.3.0; --force 
 - **Specs:** fast loop `bun run compile && bun test test/cli.test.js` (bare `bun test` runs a stale `dist/manza`); full suite `bun run test`; two worktrees at once: yes (the suite uses a local mock API, no shared state)
 - **CI:** required none; jobs `test` (lint, `bun run test`, smoke, staging smoke) and `build` (`scripts/build`, all four targets) in `ci.yml`, check `cubic · AI code reviewer`; full suite on the PR; failure report none
 - **Review bot:** cubic; push back, citing this file, on mocks instead of the compiled-binary suite, `encoding/json` maps (they sort keys), `// biome-ignore` / `//nolint`, speculative abstractions
-- **Merge:** squash — `gh pr merge <PR> --squash --delete-branch`; fallback after the gate: `--admin` for the required approving review
+- **Merge:** squash — `gh pr merge <PR> --squash --delete-branch`; the required approving review is waived only by the repository owner, the sole user in main's branch-protection bypass list, and only after the gate holds
 - **PR contract:** `## Summary` (`Closes #N`), `## Fable validation` (verdict, Not verified), `## Test plan`; backticks unescaped (below); labels none; screenshots none
 - **Conflicts:** `package.json` `version` — main's; `bun.lock` — main's, then `bun install`; `bin/release`, `scripts/{version,release-check,build,npm-publish}`, `.github/workflows/release.yml` — main's (release kit, never edited in place)
 - **Worktree setup:** `bun install --frozen-lockfile`; undo none
@@ -164,7 +164,11 @@ bin/release minor       # or patch (default), major, an explicit 0.3.0; --force 
 
 ## Agent commands
 
-The workflow commands are the `flow` plugin's (`/flow:lfg`, `/flow:github-review-pr`, `/flow:plan`, …); this repository has no local commands.
+The workflow commands are the `flow` plugin's (`/flow:lfg`, `/flow:github-review-pr`, `/flow:plan`, …); this repository has no local commands. The project settings enable the plugin and register its marketplace; a fresh checkout without it runs `claude plugin install flow@zoolutions --scope project`.
+
+## Models
+
+Sessions run on `opus` with `fable` as the advisor (`.claude/settings.json`). The advisor is consulted at decision points (before choosing an approach, a public API, a dependency, anything irreversible, and when a failure repeats), and the `fable-validator` agent checks every finished implementation before its pull request opens, which is what `## Fable validation` in the PR contract records. Agents pin their tier by alias, never by full model ID: `opus` for orchestration, security and full PR review; `sonnet` for implementation and TDD; `haiku` for mechanical scans. Every spawned agent names its `model:`; one that does not runs on `sonnet` (`CLAUDE_CODE_SUBAGENT_MODEL`).
 
 ## Cross-SDK contract
 
