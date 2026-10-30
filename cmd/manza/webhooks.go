@@ -16,7 +16,7 @@ import (
 // verifyWebhook checks a captured delivery (raw body from --file or stdin)
 // against its X-Manza-Timestamp and X-Manza-Signature. It never calls the
 // API. The reason a delivery fails is the SDK's.
-func verifyWebhook(command string, f flags, config *runConfig) error {
+func verifyWebhook(command string, f flags, quiet bool) error {
 	if command != "verify" {
 		return cliErrorf("Usage: manza webhooks verify (--secret-env <VAR>|--secret <secret>) --timestamp <t> --signature <hex> [--file path] [--no-tolerance]")
 	}
@@ -73,7 +73,7 @@ func verifyWebhook(command string, f flags, config *runConfig) error {
 		return cliErrorf("%s", message)
 	}
 
-	if !config.quiet {
+	if !quiet {
 		fmt.Println("valid")
 	}
 	return nil
@@ -81,6 +81,9 @@ func verifyWebhook(command string, f flags, config *runConfig) error {
 
 // webhookSecret is the endpoint's signing secret: from the environment
 // variable --secret-env names (kept out of ps and shell history), or --secret.
+// Unlike transfers sign, --secret is allowed: the documented way to check a
+// delivery copied from the dashboard (#24) passes it inline, and the secret
+// only verifies webhooks here, it signs nothing.
 func webhookSecret(f flags) (string, error) {
 	if f.has("secret-env") && f.has("secret") {
 		return "", cliErrorf("Pass exactly one of --secret-env or --secret.")

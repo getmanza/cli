@@ -58,6 +58,11 @@ func run(argv []string) error {
 		return nil
 	}
 
+	// webhooks verify is offline: no stored config or API settings needed.
+	if parsed.positionals[0] == "webhooks" {
+		return verifyWebhook(at(parsed.positionals, 1), parsed.flags, parsed.globals.truthy("quiet"))
+	}
+
 	if isLocalCommand(parsed.positionals[0]) {
 		// Recovery commands (login/logout/config) must work even if the
 		// stored config is corrupted — that's exactly when you need them.
@@ -79,9 +84,6 @@ func run(argv []string) error {
 
 	if oneOf(parsed.positionals[0], "transfers", "transfer-drafts", "transfer_drafts") && at(parsed.positionals, 1) == "sign" {
 		return signTransferAuthorization(parsed.flags, config)
-	}
-	if parsed.positionals[0] == "webhooks" {
-		return verifyWebhook(at(parsed.positionals, 1), parsed.flags, config)
 	}
 
 	req, err := buildRequest(parsed.positionals, parsed.flags)

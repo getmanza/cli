@@ -1230,6 +1230,24 @@ test("webhooks verify checks a captured delivery from stdin or --file", async ()
   }
 });
 
+test("webhooks verify needs no config: a corrupt one does not block it", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    await mkdir(path.join(configHome, "manza"), { recursive: true });
+    await writeFile(path.join(configHome, "manza", "config.json"), "{not-json", "utf8");
+
+    const piped = await runCliWithInput(
+      ["webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
+      WEBHOOK_BODY,
+      { configHome },
+    );
+    assert.equal(piped.stdout, "valid\n");
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
 test("webhooks verify requires the secret, timestamp and signature", async () => {
   const configHome = await tempConfigHome();
   const without = (name) => {

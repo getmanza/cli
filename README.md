@@ -249,7 +249,7 @@ A suspended authorizer shows its `suspension_reason` (for example `suspended (se
 manza transfers get 0199a1b2-0000-7000-8000-000000000001
 ```
 
-After the payment's JSON, stderr carries one `Approval:` line: `challenge sent to your authorizer (expires …)`, `authorized`, or `sent to your approvers: <reason in words> (<refusal_reason>)`. A payment created while no authorizer was enrolled has a null `authorization` and says so. The reasons, as in the [API docs](https://ma.manza.finance/docs/api/transfer-authorization):
+After the payment's JSON, stderr carries one `Approval:` line: `challenge sent to your authorizer (expires …)`, `authorized`, `declined by your authorizer; the payment is deleted`, or `sent to your approvers: <reason in words> (<refusal_reason>)` (a closed challenge without a reason reads `<status>; sent to your approvers`). A payment created while no authorizer was enrolled has a null `authorization` and says so. The reasons, as in the [API docs](https://ma.manza.finance/docs/api/transfer-authorization):
 
 | `refusal_reason` | What it means | Fix |
 |---|---|---|
