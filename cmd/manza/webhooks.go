@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	manza "github.com/getmanza/manza-go"
+	"golang.org/x/term"
 )
 
 // verifyWebhook checks a captured delivery (raw body from --file or stdin)
@@ -31,7 +33,8 @@ func verifyWebhook(command string, f flags, config *runConfig) error {
 			return err
 		}
 	}
-	timestamp, signature := f.str("timestamp"), f.str("signature")
+	// Hex is case-insensitive; the SDK compares the lowercase digest as is.
+	timestamp, signature := f.str("timestamp"), strings.ToLower(f.str("signature"))
 	if _, err := strconv.ParseInt(timestamp, 10, 64); err != nil {
 		return cliErrorf("Invalid --timestamp \"%s\". Use the delivery's X-Manza-Timestamp (Unix seconds).", timestamp)
 	}
@@ -40,6 +43,8 @@ func verifyWebhook(command string, f flags, config *runConfig) error {
 	var payload []byte
 	if f.has("file") {
 		payload, err = os.ReadFile(f.str("file"))
+	} else if term.IsTerminal(int(os.Stdin.Fd())) {
+		return cliErrorf("Missing webhook body. Use --file <path> or pipe it on stdin.")
 	} else {
 		payload, err = io.ReadAll(os.Stdin)
 	}

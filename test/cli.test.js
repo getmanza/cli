@@ -1193,6 +1193,20 @@ test("webhooks verify checks a captured delivery from stdin or --file", async ()
     );
     assert.equal(fromEnv.stdout, "valid\n");
 
+    const upper = await runCliWithInput(
+      [
+        "webhooks",
+        "verify",
+        ...WEBHOOK_FLAGS.slice(0, 4),
+        "--signature",
+        WEBHOOK_FLAGS[5].toUpperCase(),
+        "--no-tolerance",
+      ],
+      WEBHOOK_BODY,
+      { configHome },
+    );
+    assert.equal(upper.stdout, "valid\n");
+
     const reserialized = await runCliWithInput(
       ["webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
       `${WEBHOOK_BODY}\n`,
