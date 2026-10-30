@@ -61,6 +61,10 @@ func approvalNote(body any) []string {
 	switch status := field(authorization, "status"); status {
 	case "pending":
 		return []string{"Approval: challenge sent to your authorizer (expires " + field(authorization, "expires_at") + ")"}
+	case "declined":
+		return []string{"Approval: declined by your authorizer; the payment is deleted"}
+	case "refused", "expired", "superseded", "failed":
+		return []string{"Approval: " + status + "; sent to your approvers"}
 	default:
 		return []string{"Approval: " + status}
 	}

@@ -953,6 +953,14 @@ test("transfers get prints the payment's approval in words on stderr", async () 
       id: "pay_unknown",
       authorization: { id: "auth_5", status: "refused", refusal_reason: "brand_new_reason" },
     },
+    "/api/payments/pay_declined": {
+      id: "pay_declined",
+      authorization: { id: "auth_6", status: "declined", refusal_reason: null },
+    },
+    "/api/payments/pay_superseded": {
+      id: "pay_superseded",
+      authorization: { id: "auth_7", status: "superseded", refusal_reason: null },
+    },
     "/api/payments/pay_none": { id: "pay_none", authorization: null },
     "/api/payments/pay_legacy": { id: "pay_legacy", status: "requested" },
   };
@@ -981,6 +989,14 @@ test("transfers get prints the payment's approval in words on stderr", async () 
     assert.equal(
       (await get("pay_unknown")).stderr,
       "Approval: sent to your approvers: brand_new_reason\n",
+    );
+    assert.equal(
+      (await get("pay_declined")).stderr,
+      "Approval: declined by your authorizer; the payment is deleted\n",
+    );
+    assert.equal(
+      (await get("pay_superseded")).stderr,
+      "Approval: superseded; sent to your approvers\n",
     );
     assert.equal(
       (await get("pay_none")).stderr,
