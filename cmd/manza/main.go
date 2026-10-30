@@ -80,6 +80,9 @@ func run(argv []string) error {
 	if oneOf(parsed.positionals[0], "transfers", "transfer-drafts", "transfer_drafts") && at(parsed.positionals, 1) == "sign" {
 		return signTransferAuthorization(parsed.flags, config)
 	}
+	if parsed.positionals[0] == "webhooks" {
+		return verifyWebhook(at(parsed.positionals, 1), parsed.flags, config)
+	}
 
 	req, err := buildRequest(parsed.positionals, parsed.flags)
 	if err != nil {

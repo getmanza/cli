@@ -476,7 +476,7 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
     assert.deepEqual(requests, [
       {
         method: "POST",
-        url: "/api/transfer_drafts",
+        url: "/api/payments",
         body: JSON.stringify({
           account_id: "acc_123",
           beneficiary_id: "ben_123",
@@ -485,7 +485,7 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
           client_reference: "po_1",
         }),
       },
-      { method: "GET", url: "/api/transfer_drafts/td_123", body: "" },
+      { method: "GET", url: "/api/payments/td_123", body: "" },
       { method: "GET", url: "/api/beneficiaries?limit=5", body: "" },
       { method: "GET", url: "/api/beneficiaries/ben_123", body: "" },
     ]);
@@ -862,17 +862,17 @@ test("transfer authorize and decline map to the API endpoints", async () => {
     assert.deepEqual(requests, [
       {
         method: "POST",
-        url: "/api/transfer_drafts/td_123/authorize",
+        url: "/api/payments/td_123/authorize",
         body: JSON.stringify({ authorization_id: "auth_1", signature: "abc123" }),
       },
       {
         method: "POST",
-        url: "/api/transfer_drafts/td_123/decline",
+        url: "/api/payments/td_123/decline",
         body: JSON.stringify({ authorization_id: "auth_1", reason: "not mine" }),
       },
       {
         method: "POST",
-        url: "/api/transfer_drafts/td_124/decline",
+        url: "/api/payments/td_124/decline",
         body: JSON.stringify({ authorization_id: "auth_2" }),
       },
     ]);
@@ -914,6 +914,303 @@ test("transfer authorize requires --authorization-id and --signature", async () 
     );
     assert.equal(noAuthorization.code, 1);
     assert.match(noAuthorization.stderr, /Missing authorization id/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfers get prints the payment's approval in words on stderr", async () => {
+  const configHome = await tempConfigHome();
+  const payments = {
+    "/api/payments/pay_refused": {
+      id: "pay_refused",
+      status: "requested",
+      authorization: {
+        id: "auth_1",
+        status: "refused",
+        expires_at: "2026-10-30T12:00:00Z",
+        refusal_reason: "over_daily_limit",
+      },
+    },
+    "/api/payments/pay_pending": {
+      id: "pay_pending",
+      authorization: {
+        id: "auth_2",
+        status: "pending",
+        expires_at: "2026-10-30T13:00:00Z",
+        refusal_reason: null,
+      },
+    },
+    "/api/payments/pay_authorized": {
+      id: "pay_authorized",
+      authorization: { id: "auth_3", status: "authorized", refusal_reason: null },
+    },
+    "/api/payments/pay_expired": {
+      id: "pay_expired",
+      authorization: { id: "auth_4", status: "expired", refusal_reason: "expired" },
+    },
+    "/api/payments/pay_unknown": {
+      id: "pay_unknown",
+      authorization: { id: "auth_5", status: "refused", refusal_reason: "brand_new_reason" },
+    },
+    "/api/payments/pay_none": { id: "pay_none", authorization: null },
+    "/api/payments/pay_legacy": { id: "pay_legacy", status: "requested" },
+  };
+  const server = await createServer((req, res) => sendJSON(res, payments[req.url]));
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+  const get = (id, extra = []) =>
+    runCli([...api, ...extra, "transfers", "get", id], { configHome });
+
+  try {
+    const refused = await get("pay_refused");
+    assert.deepEqual(JSON.parse(refused.stdout), payments["/api/payments/pay_refused"]);
+    assert.equal(
+      refused.stderr,
+      "Approval: sent to your approvers: This amount plus the last 24 hours' authorized total is above the limit per 24 hours (over_daily_limit)\n",
+    );
+
+    assert.equal(
+      (await get("pay_pending")).stderr,
+      "Approval: challenge sent to your authorizer (expires 2026-10-30T13:00:00Z)\n",
+    );
+    assert.equal((await get("pay_authorized")).stderr, "Approval: authorized\n");
+    assert.equal(
+      (await get("pay_expired")).stderr,
+      "Approval: sent to your approvers: Nobody answered the challenge within one hour (expired)\n",
+    );
+    assert.equal(
+      (await get("pay_unknown")).stderr,
+      "Approval: sent to your approvers: brand_new_reason\n",
+    );
+    assert.equal(
+      (await get("pay_none")).stderr,
+      "Approval: no transfer authorizer was enrolled when this payment was created; it went to your approvers\n",
+    );
+
+    const legacy = await get("pay_legacy");
+    assert.equal(legacy.stdout, '{"id":"pay_legacy","status":"requested"}\n');
+    assert.equal(legacy.stderr, "");
+
+    const quiet = await get("pay_refused", ["--quiet"]);
+    assert.equal(quiet.stdout, "");
+    assert.equal(quiet.stderr, "");
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfers commands name the payment id they miss", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const result = await runCli(["--api-key", "sk_live_test", "transfers", "get"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, "Missing payment id.\n");
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfer-authorizer get prints the JSON and a summary on stderr", async () => {
+  const configHome = await tempConfigHome();
+  const day = 24 * 60 * 60 * 1000;
+  const inDays = (days) => new Date(Date.now() + days * day).toISOString();
+  const authorizer = (overrides) => ({
+    status: "active",
+    suspension_reason: null,
+    currency_code: "MAD",
+    per_transfer_limit: "5000.0",
+    daily_limit: "20000.0",
+    daily_authorized_total: "1500.5",
+    secret_expires_at: inDays(30),
+    webhook_endpoint_id: "weh_1",
+    enrolled_at: "2026-09-01T00:00:00Z",
+    ...overrides,
+  });
+  let body = authorizer({});
+  let status = 200;
+  const requests = [];
+  const server = await createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    sendJSON(res, body, status);
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    const active = await runCli([...api, "transfer-authorizer", "get"], { configHome });
+    assert.deepEqual(JSON.parse(active.stdout), body);
+    assert.equal(
+      active.stderr,
+      [
+        "Transfer authorizer: active",
+        "Limits: 5000.0 MAD per transfer, 20000.0 MAD per 24 hours",
+        "Last 24 hours: 1500.5 MAD authorized, 18499.5 MAD remaining",
+        `Secret expires: ${body.secret_expires_at}`,
+        "Webhook endpoint: weh_1",
+        "",
+      ].join("\n"),
+    );
+
+    body = authorizer({ secret_expires_at: inDays(3) });
+    const soon = await runCli([...api, "transfer_authorizer", "get"], { configHome });
+    assert.match(
+      soon.stderr,
+      new RegExp(
+        `Secret expires: ${body.secret_expires_at} \\(within 7 days: an approver rotates it in the app\\)\n`,
+      ),
+    );
+
+    body = authorizer({
+      status: "suspended",
+      suspension_reason: "secret_expired",
+      daily_authorized_total: "25000.0",
+      secret_expires_at: inDays(-1),
+    });
+    const suspended = await runCli([...api, "transfer-authorizer", "get"], { configHome });
+    assert.match(
+      suspended.stderr,
+      /^Transfer authorizer: suspended \(secret_expired: the signing secret expired\)\n/,
+    );
+    assert.match(suspended.stderr, /Last 24 hours: 25000\.0 MAD authorized, 0\.0 MAD remaining\n/);
+    assert.match(
+      suspended.stderr,
+      /Secret expires: \S+ \(expired: an approver rotates it in the app and resumes\)\n/,
+    );
+
+    const quiet = await runCli([...api, "--quiet", "transfer-authorizer", "get"], { configHome });
+    assert.equal(quiet.stdout, "");
+    assert.equal(quiet.stderr, "");
+
+    status = 404;
+    body = { error: { type: "not_found_error", message: "Not found" } };
+    const missing = await runCli([...api, "transfer-authorizer", "get"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(missing.code, 1);
+    assert.equal(missing.stdout, "");
+    assert.equal(
+      missing.stderr,
+      "No transfer authorizer enrolled: Settings → Developer → Transfer approval\n",
+    );
+
+    const usage = await runCli([...api, "transfer-authorizer", "list"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(usage.code, 1);
+    assert.equal(usage.stderr, "Usage: manza transfer-authorizer get\n");
+
+    assert.ok(requests.every((request) => request === "GET /api/transfer_authorizer"));
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+// The verification gate from getmanza/cli#24.
+const WEBHOOK_BODY = '{"event":"test.ping","event_id":"0199a1b2-0000-7000-8000-000000000010"}';
+const WEBHOOK_FLAGS = [
+  "--secret",
+  "whsec_test_vector_secret",
+  "--timestamp",
+  "1767225600",
+  "--signature",
+  "970fdd13680015f73dbd172884498c6fd1e07d5b5c41aae081272598607fea75",
+];
+
+test("webhooks verify checks a captured delivery from stdin or --file", async () => {
+  const configHome = await tempConfigHome();
+  const bodyFile = path.join(configHome, "body.json");
+  await writeFile(bodyFile, WEBHOOK_BODY, "utf8");
+
+  try {
+    const stdin = await runCliWithInput(
+      ["webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
+      WEBHOOK_BODY,
+      { configHome },
+    );
+    assert.equal(stdin.code, 0);
+    assert.equal(stdin.stdout, "valid\n");
+    assert.equal(stdin.stderr, "");
+
+    const file = await runCli(
+      ["webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance", "--file", bodyFile],
+      { configHome },
+    );
+    assert.equal(file.stdout, "valid\n");
+
+    const reserialized = await runCliWithInput(
+      ["webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
+      `${WEBHOOK_BODY}\n`,
+      { configHome, reject: false },
+    );
+    assert.equal(reserialized.code, 1);
+    assert.equal(reserialized.stdout, "");
+    assert.equal(reserialized.stderr, "invalid webhook signature\n");
+
+    const stale = await runCli(["webhooks", "verify", ...WEBHOOK_FLAGS, "--file", bodyFile], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(stale.code, 1);
+    assert.equal(
+      stale.stderr,
+      "webhook timestamp outside tolerance (the signature matches; pass --no-tolerance to check a captured delivery)\n",
+    );
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("webhooks verify requires the secret, timestamp and signature", async () => {
+  const configHome = await tempConfigHome();
+  const without = (name) => {
+    const index = WEBHOOK_FLAGS.indexOf(`--${name}`);
+    return WEBHOOK_FLAGS.filter((_, i) => i !== index && i !== index + 1);
+  };
+
+  try {
+    for (const [name, message] of [
+      ["secret", "Missing webhook signing secret. Use --secret <secret>.\n"],
+      ["timestamp", "Missing timestamp. Use --timestamp <X-Manza-Timestamp>.\n"],
+      ["signature", "Missing signature. Use --signature <X-Manza-Signature>.\n"],
+    ]) {
+      const result = await runCliWithInput(["webhooks", "verify", ...without(name)], WEBHOOK_BODY, {
+        configHome,
+        reject: false,
+      });
+      assert.equal(result.code, 1);
+      assert.equal(result.stderr, message);
+    }
+
+    const usage = await runCli(["webhooks", "list"], { configHome, reject: false });
+    assert.equal(usage.code, 1);
+    assert.match(usage.stderr, /^Usage: manza webhooks verify /);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("transfer-authorizer and webhooks help list their commands", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const authorizer = await runCli(["transfer-authorizer", "--help"], { configHome });
+    assert.match(authorizer.stdout, /Manza CLI - transfer-authorizer/);
+    assert.match(authorizer.stdout, /manza transfer-authorizer get/);
+
+    const webhooks = await runCli(["webhooks", "--help"], { configHome });
+    assert.match(webhooks.stdout, /Manza CLI - webhooks/);
+    assert.match(webhooks.stdout, /manza webhooks verify --secret <secret>/);
+
+    const top = await runCli(["--help"], { configHome });
+    assert.match(top.stdout, /manza transfer-authorizer get/);
+    assert.match(top.stdout, /manza webhooks verify/);
   } finally {
     await rm(configHome, { recursive: true, force: true });
   }

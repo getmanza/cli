@@ -113,6 +113,10 @@ func send(config *runConfig, req *apiRequest) error {
 
 	body, err := s.fetch(req, req.query)
 	if err != nil {
+		var apiErr *manza.Error
+		if req.notFound != "" && errors.As(err, &apiErr) && apiErr.Kind == manza.KindNotFound {
+			return cliErrorf("%s", req.notFound)
+		}
 		return s.handleError(err)
 	}
 	// The SDK list methods wrapped every response in a Page.
@@ -120,6 +124,11 @@ func send(config *runConfig, req *apiRequest) error {
 		return errNoDataArray
 	}
 	printOutput(body, config)
+	if req.note != nil && !config.quiet {
+		for _, line := range req.note(body) {
+			fmt.Fprintln(os.Stderr, line)
+		}
+	}
 	return nil
 }
 
