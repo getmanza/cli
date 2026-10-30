@@ -23,6 +23,12 @@ type apiRequest struct {
 	// create methods did in 1.x.
 	alwaysBody bool
 	call       func(ctx context.Context, client *manza.Client) (*manza.Response, error)
+	// note, when set, turns the response body into lines for stderr,
+	// printed after the output; stdout stays the API's JSON.
+	note func(body any) []string
+	// notFound, when set, replaces the API's not_found_error (not any 404:
+	// a wrong --base-url keeps the usual error).
+	notFound string
 
 	paginate  bool
 	maxItems  int // 0 = no cap
@@ -55,6 +61,8 @@ func buildRequest(positionals []string, f flags) (*apiRequest, error) {
 		return paymentLinkRequest(command, arg, f)
 	case "transfers", "transfer-drafts", "transfer_drafts":
 		return transferDraftRequest(command, arg, f)
+	case "transfer-authorizer", "transfer_authorizer":
+		return transferAuthorizerRequest(command)
 	case "beneficiaries":
 		return beneficiaryRequest(positionals[1:], f)
 	case "payee-trust-requests", "payee_trust_requests":
@@ -217,14 +225,16 @@ func transferDraftRequest(command, id string, f flags) (*apiRequest, error) {
 	case "create":
 		body := pick(f, "account-id", "beneficiary-id", "external-account-id", "destination-account-id",
 			"amount", "currency-code", "payment-reference", "internal-notes", "client-reference")
-		return &apiRequest{method: "POST", path: "/api/transfer_drafts", body: bodyFromFlags(f, body), alwaysBody: true}, nil
+		return &apiRequest{method: "POST", path: "/api/payments", body: bodyFromFlags(f, body), alwaysBody: true}, nil
 	case "get":
-		if err := requireString(id, "transfer draft id"); err != nil {
+		if err := requireString(id, "payment id"); err != nil {
 			return nil, err
 		}
-		return get("/api/transfer_drafts/" + encodeURIComponent(id)), nil
+		req := get("/api/payments/" + encodeURIComponent(id))
+		req.note = approvalNote
+		return req, nil
 	case "authorize":
-		if err := requireString(id, "transfer draft id"); err != nil {
+		if err := requireString(id, "payment id"); err != nil {
 			return nil, err
 		}
 		if err := requireValue(f.value("authorization-id"), "authorization id. Use --authorization-id <id>"); err != nil {
@@ -242,7 +252,7 @@ func transferDraftRequest(command, id string, f flags) (*apiRequest, error) {
 		body.Set("signature", signature)
 		return transferDraftAction(id, "authorize", body), nil
 	case "decline":
-		if err := requireString(id, "transfer draft id"); err != nil {
+		if err := requireString(id, "payment id"); err != nil {
 			return nil, err
 		}
 		if err := requireValue(f.value("authorization-id"), "authorization id. Use --authorization-id <id>"); err != nil {
@@ -259,16 +269,33 @@ func transferDraftRequest(command, id string, f flags) (*apiRequest, error) {
 	}
 }
 
-// transferDraftAction goes through Client.Request rather than the typed
-// Authorize/Decline: manza-go v1.0.0 escapes the "api/transfer_drafts"
-// base of those paths into "api%2Ftransfer_drafts".
+// transferDraftAction (and transfers get and create) go through
+// Client.Request rather than the typed Payments methods: manza-go v1.1.0
+// escapes the "api/payments" base of by-id paths into "api%2Fpayments"
+// (https://github.com/getmanza/manza-go/issues/14), and Payments.Create
+// takes a map, which would sort the request body's keys.
 func transferDraftAction(id, action string, body *object) *apiRequest {
 	return &apiRequest{
 		method:     "POST",
-		path:       "/api/transfer_drafts/" + encodeURIComponent(id) + "/" + action,
+		path:       "/api/payments/" + encodeURIComponent(id) + "/" + action,
 		body:       func() (*object, error) { return body, nil },
 		alwaysBody: true,
 	}
+}
+
+func transferAuthorizerRequest(command string) (*apiRequest, error) {
+	if command != "get" {
+		return nil, cliErrorf("Usage: manza transfer-authorizer get")
+	}
+	return &apiRequest{
+		method: "GET",
+		path:   "/api/transfer_authorizer",
+		call: func(ctx context.Context, c *manza.Client) (*manza.Response, error) {
+			return c.TransferAuthorizer.Get(ctx)
+		},
+		note:     authorizerNote,
+		notFound: "No transfer authorizer enrolled: Settings → Developer → Transfer approval",
+	}, nil
 }
 
 func beneficiaryRequest(args []string, f flags) (*apiRequest, error) {

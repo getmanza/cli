@@ -58,6 +58,18 @@ func run(argv []string) error {
 		return nil
 	}
 
+	// webhooks verify is offline: no stored config or API settings needed.
+	if parsed.positionals[0] == "webhooks" {
+		// Still reject bad global flags given on the command line.
+		if err := checkFormat(outputFormat(parsed.globals)); err != nil {
+			return err
+		}
+		if _, err := parseOptionalPositiveInteger(parsed.globals.value("timeout-ms"), "timeout-ms"); err != nil {
+			return err
+		}
+		return verifyWebhook(at(parsed.positionals, 1), parsed.flags, parsed.globals.truthy("quiet"))
+	}
+
 	if isLocalCommand(parsed.positionals[0]) {
 		// Recovery commands (login/logout/config) must work even if the
 		// stored config is corrupted — that's exactly when you need them.

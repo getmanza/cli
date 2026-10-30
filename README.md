@@ -223,6 +223,60 @@ manza invoices create --file invoice.json
 cat invoice.json | manza invoices create --stdin
 ```
 
+## Debugging transfer authorization
+
+Three questions come up when a machine-authorized transfer does not go the way you expected. `transfer-authorizer get` and `transfers get` print the API's JSON on stdout as usual and put the human summary on stderr, so scripts that parse stdout are unaffected (`--quiet` hides both). `webhooks verify` never calls the API.
+
+**Is my authorizer active?**
+
+```bash
+manza transfer-authorizer get
+```
+
+```text
+Transfer authorizer: active
+Limits: 5000.0 MAD per transfer, 20000.0 MAD per 24 hours
+Last 24 hours: 1500.5 MAD authorized, 18499.5 MAD remaining
+Secret expires: 2027-01-18T00:00:00Z
+Webhook endpoint: 01958e51-7c5a-7000-8000-000000000020
+```
+
+A suspended authorizer shows its `suspension_reason` (for example `suspended (secret_expired: the signing secret expired)`). The secret's expiry carries a warning within 7 days of it, and says when it has expired. With nothing enrolled the command exits 1 with `No transfer authorizer enrolled: Settings → Developer → Transfer approval`.
+
+**Why did this payment go to the approvers?**
+
+```bash
+manza transfers get 0199a1b2-0000-7000-8000-000000000001
+```
+
+After the payment's JSON, stderr carries one `Approval:` line: `challenge sent to your authorizer (expires …)`, `authorized`, `declined by your authorizer; the payment is deleted`, or `sent to your approvers: <reason in words> (<refusal_reason>)` (a closed challenge without a reason reads `<status>; sent to your approvers`). A payment created while no authorizer was enrolled has a null `authorization` and says so. The reasons, as in the [API docs](https://ma.manza.finance/docs/api/transfer-authorization):
+
+| `refusal_reason` | What it means | Fix |
+|---|---|---|
+| `untrusted_payee` | The payee's bank details are not trusted: never trusted with Approve transfers to new payees off, or a member revoked their trust, or they were edited after trusting | `manza payee-trust-requests create` and have an approver accept it; for details never trusted, an approver may instead turn on Approve transfers to new payees |
+| `unrestricted_api_key` | The payee is not trusted yet and the API key that created the transfer has no IP allowlist (or one whose networks together allow every address), or was revoked since | Add an IP allowlist to that key in Settings → Developer → API keys |
+| `over_new_payee_limit` | The payee is not trusted yet and the amount is above the limit per transfer to a new payee | Pay up to that limit first (its signature trusts the payee), or have an approver raise it |
+| `over_transfer_limit` | The amount is above the limit per transfer | Split the payment, or have an approver raise the limit |
+| `over_daily_limit` | This amount plus the last 24 hours' authorized total is above the limit per 24 hours | Wait for older authorizations to leave the window, or raise the limit; see `manza transfer-authorizer get` |
+| `currency_mismatch` | The source account's currency is not the enrolled currency | Pay from an account in the enrolled currency, or enrol that currency |
+| `suspended` | Transfer authorization is suspended, or its endpoint is disabled | Fix the cause `manza transfer-authorizer get` shows; an approver then resumes it in the app |
+| `secret_expired` | The signing secret passed secret_expires_at | An approver rotates the secret in the app and resumes; deploy the new secret |
+| `signature_failed` | Five invalid signatures on one challenge | Build the signed string with `manza transfers sign` and the current secret |
+| `stale` | The transfer, the payee's bank details or the enrolled endpoint changed after the challenge was sent | Create a new transfer; do not edit it or its payee while a challenge is open |
+| `expired` | Nobody answered the challenge within one hour | Check that your receiver got the webhook (below) and called authorize |
+
+**Does this captured webhook verify with my secret?**
+
+Copy a delivery from the dashboard's delivery log or from ngrok's inspector: the raw body, `X-Manza-Timestamp` and `X-Manza-Signature`. Save the body byte for byte (no reformatting, no trailing newline):
+
+```bash
+manza webhooks verify --secret-env WEBHOOK_SECRET --timestamp 1767225600 \
+  --signature 970fdd13680015f73dbd172884498c6fd1e07d5b5c41aae081272598607fea75 \
+  --file body.json --no-tolerance
+```
+
+It prints `valid` and exits 0, or prints the reason (`invalid webhook signature`, `webhook timestamp outside tolerance`, …) on stderr and exits 1. Without `--file` it reads the body from stdin. `--secret-env` names the environment variable holding the endpoint's signing secret; `--secret <secret>` also works but shows in `ps` and your shell history. A delivery older than 5 minutes fails the timestamp check unless you pass `--no-tolerance`; never skip that check in a live receiver.
+
 ## Commands
 
 ```text
@@ -274,6 +328,8 @@ manza webhook-endpoints regenerate-secret <id>
 manza webhook-endpoints enable <id>
 manza webhook-endpoints disable <id>
 
+manza webhooks verify (--secret-env <VAR>|--secret <secret>) --timestamp <t> --signature <hex> [--file path] [--no-tolerance]
+
 manza checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
 manza checkout-sessions get <id>
 
@@ -282,6 +338,8 @@ manza transfers get <id>
 manza transfers authorize <id> --authorization-id <id> --signature <hex>
 manza transfers decline <id> --authorization-id <id> [--reason text]
 manza transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
+
+manza transfer-authorizer get
 
 manza beneficiaries list [--limit n] [--cursor value] [--all|--max-items n]
 manza beneficiaries get <id>
