@@ -1036,6 +1036,11 @@ test("transfer-authorizer get prints the JSON and a summary on stderr", async ()
   const requests = [];
   const server = await createServer((req, res) => {
     requests.push(`${req.method} ${req.url}`);
+    if (typeof body === "string") {
+      res.writeHead(status, { "Content-Type": "text/html" });
+      res.end(body);
+      return;
+    }
     sendJSON(res, body, status);
   });
   const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
@@ -1098,6 +1103,19 @@ test("transfer-authorizer get prints the JSON and a summary on stderr", async ()
       "No transfer authorizer enrolled: Settings → Developer → Transfer approval\n",
     );
 
+    // A 404 that is not the API's not_found_error (a wrong --base-url, an
+    // older API) keeps the usual error output.
+    body = "<html>Not Found</html>";
+    const elsewhere = await runCli([...api, "transfer-authorizer", "get"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(elsewhere.code, 1);
+    assert.deepEqual(JSON.parse(elsewhere.stderr), {
+      error: { message: "Not found", type: null, param: null },
+      status: 404,
+    });
+
     const usage = await runCli([...api, "transfer-authorizer", "list"], {
       configHome,
       reject: false,
@@ -1144,6 +1162,21 @@ test("webhooks verify checks a captured delivery from stdin or --file", async ()
     );
     assert.equal(file.stdout, "valid\n");
 
+    const fromEnv = await runCli(
+      [
+        "webhooks",
+        "verify",
+        ...WEBHOOK_FLAGS.slice(2),
+        "--secret-env",
+        "WEBHOOK_SECRET",
+        "--no-tolerance",
+        "--file",
+        bodyFile,
+      ],
+      { configHome, env: { WEBHOOK_SECRET: "whsec_test_vector_secret" } },
+    );
+    assert.equal(fromEnv.stdout, "valid\n");
+
     const reserialized = await runCliWithInput(
       ["webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
       `${WEBHOOK_BODY}\n`,
@@ -1176,7 +1209,7 @@ test("webhooks verify requires the secret, timestamp and signature", async () =>
 
   try {
     for (const [name, message] of [
-      ["secret", "Missing webhook signing secret. Use --secret <secret>.\n"],
+      ["secret", "Missing webhook signing secret. Use --secret-env <VAR> or --secret <secret>.\n"],
       ["timestamp", "Missing timestamp. Use --timestamp <X-Manza-Timestamp>.\n"],
       ["signature", "Missing signature. Use --signature <X-Manza-Signature>.\n"],
     ]) {
@@ -1187,6 +1220,33 @@ test("webhooks verify requires the secret, timestamp and signature", async () =>
       assert.equal(result.code, 1);
       assert.equal(result.stderr, message);
     }
+
+    const badTimestamp = await runCliWithInput(
+      ["webhooks", "verify", ...without("timestamp"), "--timestamp", "2026-01-01"],
+      WEBHOOK_BODY,
+      { configHome, reject: false },
+    );
+    assert.equal(badTimestamp.code, 1);
+    assert.equal(
+      badTimestamp.stderr,
+      'Invalid --timestamp "2026-01-01". Use the delivery\'s X-Manza-Timestamp (Unix seconds).\n',
+    );
+
+    const both = await runCliWithInput(
+      ["webhooks", "verify", ...WEBHOOK_FLAGS, "--secret-env", "WEBHOOK_SECRET"],
+      WEBHOOK_BODY,
+      { configHome, reject: false },
+    );
+    assert.equal(both.code, 1);
+    assert.equal(both.stderr, "Pass exactly one of --secret-env or --secret.\n");
+
+    const unset = await runCliWithInput(
+      ["webhooks", "verify", ...without("secret"), "--secret-env", "NOPE_UNSET_VAR"],
+      WEBHOOK_BODY,
+      { configHome, reject: false },
+    );
+    assert.equal(unset.code, 1);
+    assert.equal(unset.stderr, "Environment variable NOPE_UNSET_VAR is not set.\n");
 
     const usage = await runCli(["webhooks", "list"], { configHome, reject: false });
     assert.equal(usage.code, 1);
@@ -1206,7 +1266,10 @@ test("transfer-authorizer and webhooks help list their commands", async () => {
 
     const webhooks = await runCli(["webhooks", "--help"], { configHome });
     assert.match(webhooks.stdout, /Manza CLI - webhooks/);
-    assert.match(webhooks.stdout, /manza webhooks verify --secret <secret>/);
+    assert.match(
+      webhooks.stdout,
+      /manza webhooks verify \(--secret-env <VAR>\|--secret <secret>\)/,
+    );
 
     const top = await runCli(["--help"], { configHome });
     assert.match(top.stdout, /manza transfer-authorizer get/);

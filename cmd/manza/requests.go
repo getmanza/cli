@@ -26,7 +26,8 @@ type apiRequest struct {
 	// note, when set, turns the response body into lines for stderr,
 	// printed after the output; stdout stays the API's JSON.
 	note func(body any) []string
-	// notFound, when set, replaces the API's not-found error.
+	// notFound, when set, replaces the API's not_found_error (not any 404:
+	// a wrong --base-url keeps the usual error).
 	notFound string
 
 	paginate  bool

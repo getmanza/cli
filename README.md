@@ -225,7 +225,7 @@ cat invoice.json | manza invoices create --stdin
 
 ## Debugging transfer authorization
 
-Three questions come up when a machine-authorized transfer does not go the way you expected. Each command prints the API's JSON on stdout as usual; the human summary goes to stderr, so scripts that parse stdout are unaffected (`--quiet` hides both).
+Three questions come up when a machine-authorized transfer does not go the way you expected. `transfer-authorizer get` and `transfers get` print the API's JSON on stdout as usual and put the human summary on stderr, so scripts that parse stdout are unaffected (`--quiet` hides both). `webhooks verify` never calls the API.
 
 **Is my authorizer active?**
 
@@ -270,12 +270,12 @@ After the payment's JSON, stderr carries one `Approval:` line: `challenge sent t
 Copy a delivery from the dashboard's delivery log or from ngrok's inspector: the raw body, `X-Manza-Timestamp` and `X-Manza-Signature`. Save the body byte for byte (no reformatting, no trailing newline):
 
 ```bash
-manza webhooks verify --secret "$WEBHOOK_SECRET" --timestamp 1767225600 \
+manza webhooks verify --secret-env WEBHOOK_SECRET --timestamp 1767225600 \
   --signature 970fdd13680015f73dbd172884498c6fd1e07d5b5c41aae081272598607fea75 \
   --file body.json --no-tolerance
 ```
 
-It prints `valid` and exits 0, or prints the reason (`invalid webhook signature`, `webhook timestamp outside tolerance`, …) on stderr and exits 1. Without `--file` it reads the body from stdin. A delivery older than 5 minutes fails the timestamp check unless you pass `--no-tolerance`; never skip that check in a live receiver.
+It prints `valid` and exits 0, or prints the reason (`invalid webhook signature`, `webhook timestamp outside tolerance`, …) on stderr and exits 1. Without `--file` it reads the body from stdin. `--secret-env` names the environment variable holding the endpoint's signing secret; `--secret <secret>` also works but shows in `ps` and your shell history. A delivery older than 5 minutes fails the timestamp check unless you pass `--no-tolerance`; never skip that check in a live receiver.
 
 ## Commands
 
@@ -328,7 +328,7 @@ manza webhook-endpoints regenerate-secret <id>
 manza webhook-endpoints enable <id>
 manza webhook-endpoints disable <id>
 
-manza webhooks verify --secret <secret> --timestamp <t> --signature <hex> [--file path] [--no-tolerance]
+manza webhooks verify (--secret-env <VAR>|--secret <secret>) --timestamp <t> --signature <hex> [--file path] [--no-tolerance]
 
 manza checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
 manza checkout-sessions get <id>

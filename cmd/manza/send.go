@@ -114,7 +114,7 @@ func send(config *runConfig, req *apiRequest) error {
 	body, err := s.fetch(req, req.query)
 	if err != nil {
 		var apiErr *manza.Error
-		if req.notFound != "" && errors.As(err, &apiErr) && apiErr.Kind == manza.KindNotFound {
+		if req.notFound != "" && errors.As(err, &apiErr) && apiErr.Kind == manza.KindNotFound && apiErr.Type == "not_found_error" {
 			return cliErrorf("%s", req.notFound)
 		}
 		return s.handleError(err)

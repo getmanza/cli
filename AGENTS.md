@@ -28,7 +28,7 @@ Command-line interface for the Manza API (renamed from zazu in 1.0). Go source i
 | `manza checkout-sessions create/get` | Hosted checkout sessions |
 | `manza transfers create/get/authorize/decline/sign` | Payments (`/api/payments`); `get` adds an `Approval:` line on stderr; `sign` computes the authorization signature locally from `--secret-env` |
 | `manza transfer-authorizer get` | The enrolled transfer authorizer; a status/limits/usage/secret-expiry summary on stderr |
-| `manza webhooks verify` | Checks a captured webhook delivery locally (`manza.ConstructWebhookEvent`); prints `valid` or the reason |
+| `manza webhooks verify` | Checks a captured webhook delivery locally (secret from `--secret-env` or `--secret`) (`manza.ConstructWebhookEvent`); prints `valid` or the reason |
 | `manza beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
 | `manza payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
 | `manza request <method> <path>` | Escape hatch for raw API calls |

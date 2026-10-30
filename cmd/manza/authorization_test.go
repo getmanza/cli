@@ -19,6 +19,25 @@ func TestREADMEListsEveryRefusalReason(t *testing.T) {
 			t.Errorf("README.md has no row %q", row)
 		}
 	}
+
+	_, table, found := strings.Cut(string(readme), "| `refusal_reason` | What it means | Fix |\n|---|---|---|\n")
+	if !found {
+		t.Fatal("README.md has no refusal reason table")
+	}
+	rows := 0
+	for _, line := range strings.Split(table, "\n") {
+		if !strings.HasPrefix(line, "| `") {
+			break
+		}
+		rows++
+		reason, _, _ := strings.Cut(strings.TrimPrefix(line, "| `"), "`")
+		if _, ok := refusalReasons[reason]; !ok {
+			t.Errorf("README.md explains %q, which refusalReasons does not", reason)
+		}
+	}
+	if rows != len(refusalReasons) {
+		t.Errorf("README.md table has %d rows, refusalReasons %d", rows, len(refusalReasons))
+	}
 }
 
 func TestDecimalRemaining(t *testing.T) {
