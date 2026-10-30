@@ -60,6 +60,13 @@ func run(argv []string) error {
 
 	// webhooks verify is offline: no stored config or API settings needed.
 	if parsed.positionals[0] == "webhooks" {
+		// Still reject bad global flags given on the command line.
+		if err := checkFormat(outputFormat(parsed.globals)); err != nil {
+			return err
+		}
+		if _, err := parseOptionalPositiveInteger(parsed.globals.value("timeout-ms"), "timeout-ms"); err != nil {
+			return err
+		}
 		return verifyWebhook(at(parsed.positionals, 1), parsed.flags, parsed.globals.truthy("quiet"))
 	}
 

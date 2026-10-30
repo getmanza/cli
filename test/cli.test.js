@@ -1243,6 +1243,23 @@ test("webhooks verify needs no config: a corrupt one does not block it", async (
       { configHome },
     );
     assert.equal(piped.stdout, "valid\n");
+
+    // Global flags given on the command line are still checked.
+    const badFormat = await runCliWithInput(
+      ["--format", "bogus", "webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
+      WEBHOOK_BODY,
+      { configHome, reject: false },
+    );
+    assert.equal(badFormat.code, 1);
+    assert.equal(badFormat.stderr, 'Invalid output format "bogus". Use json, pretty, or raw.\n');
+
+    const badTimeout = await runCliWithInput(
+      ["--timeout-ms", "abc", "webhooks", "verify", ...WEBHOOK_FLAGS, "--no-tolerance"],
+      WEBHOOK_BODY,
+      { configHome, reject: false },
+    );
+    assert.equal(badTimeout.code, 1);
+    assert.equal(badTimeout.stderr, 'Invalid --timeout-ms "abc". Use a positive integer.\n');
   } finally {
     await rm(configHome, { recursive: true, force: true });
   }
