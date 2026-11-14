@@ -8,16 +8,21 @@ import (
 
 // 2.0 removed the ZAZU_* fallbacks: only MANZA_* is read.
 func TestEnvReadsOnlyManzaNames(t *testing.T) {
-	t.Setenv("ZAZU_API_KEY", "sk_live_legacy")
-	t.Setenv("ZAZU_VERSION", "2026-03-27")
-	t.Setenv("MANZA_API_KEY", "")
-	t.Setenv("MANZA_API_VERSION", "")
-
-	if got := env("API_KEY"); got != "" {
-		t.Errorf("env(API_KEY) read ZAZU_API_KEY: %q", got)
+	legacy := map[string]string{
+		"API_KEY":     "ZAZU_API_KEY",
+		"BASE_URL":    "ZAZU_BASE_URL",
+		"API_VERSION": "ZAZU_VERSION",
+		"TIMEOUT_MS":  "ZAZU_TIMEOUT_MS",
 	}
-	if got := env("API_VERSION"); got != "" {
-		t.Errorf("env(API_VERSION) read ZAZU_VERSION: %q", got)
+	for name, old := range legacy {
+		t.Setenv(old, "legacy")
+		t.Setenv("MANZA_"+name, "")
+	}
+
+	for name, old := range legacy {
+		if got := env(name); got != "" {
+			t.Errorf("env(%s) read %s: %q", name, old, got)
+		}
 	}
 
 	t.Setenv("MANZA_API_KEY", "sk_live_manza")

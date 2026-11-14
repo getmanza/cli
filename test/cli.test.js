@@ -1932,7 +1932,7 @@ test("ZAZU_* env vars are no longer read (removed in 2.0)", async () => {
     assert.deepEqual(requests, []);
 
     // Neither the CLI's ZAZU_VERSION nor the SDK's ZAZU_API_VERSION pins the
-    // request, and a ZAZU_TIMEOUT_MS of 1 does not time it out.
+    // request, and an invalid ZAZU_TIMEOUT_MS is not parsed.
     const rest = await runCli(["entity", "get"], {
       configHome,
       env: {
@@ -1940,12 +1940,21 @@ test("ZAZU_* env vars are no longer read (removed in 2.0)", async () => {
         MANZA_BASE_URL: server.baseURL,
         ZAZU_VERSION: "2026-03-27",
         ZAZU_API_VERSION: "2026-03-27",
-        ZAZU_TIMEOUT_MS: "1",
+        ZAZU_TIMEOUT_MS: "abc",
       },
     });
     assert.deepEqual(JSON.parse(rest.stdout), { id: "entity_1" });
     assert.equal(rest.stderr, "");
     assert.deepEqual(requests, [{ authorization: "Bearer sk_live_manza", version: null }]);
+
+    // manza-go still falls back to ZAZU_*: the CLI hides them from it, so it
+    // prints no deprecation warning of its own.
+    const flags = await runCli(
+      ["--api-key", "sk_live_flag", "--base-url", server.baseURL, "entity", "get"],
+      { configHome, env: { ZAZU_API_KEY: "sk_live_legacy", ZAZU_BASE_URL: "http://127.0.0.1:9" } },
+    );
+    assert.equal(flags.stderr, "");
+    assert.deepEqual(requests.at(-1), { authorization: "Bearer sk_live_flag", version: null });
 
     const login = await runCli(["login", "--api-key", "sk_live_new_key_5678"], {
       configHome,

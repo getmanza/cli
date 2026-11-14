@@ -95,7 +95,7 @@ func run(argv []string) error {
 }
 
 // resolveConfig applies flag > env > stored config > default, reading each
-// env var only when the flag is absent so deprecation warnings match 1.x.
+// env var only when the flag is absent.
 func resolveConfig(globals flags, stored *storedConfig) (*runConfig, error) {
 	first := func(flag, envName, storedKey, fallback string) string {
 		if globals.truthy(flag) {
