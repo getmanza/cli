@@ -5,18 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	cli "github.com/getmanza/cli"
 	manza "github.com/getmanza/manza-go/v2"
 )
 
 func main() {
-	// The zazu name keeps working for all of 1.x; removed in 2.0.
-	if filepath.Base(os.Args[0]) == "zazu" {
-		fmt.Fprintln(os.Stderr, "zazu is deprecated and will be removed in 2.0. Use manza instead.")
-	}
-
 	err := run(os.Args[1:])
 	if err == nil {
 		return
@@ -101,7 +95,7 @@ func run(argv []string) error {
 }
 
 // resolveConfig applies flag > env > stored config > default, reading each
-// env var only when the flag is absent so deprecation warnings match 1.x.
+// env var only when the flag is absent.
 func resolveConfig(globals flags, stored *storedConfig) (*runConfig, error) {
 	first := func(flag, envName, storedKey, fallback string) string {
 		if globals.truthy(flag) {

@@ -73,9 +73,8 @@ type sender struct {
 }
 
 func newSender(config *runConfig) (*sender, error) {
-	// manza.New reads the legacy ZAZU_* variables itself and warns in its own
-	// format. The CLI has already resolved (and warned about) them, so hide
-	// them from the SDK.
+	// manza-go still falls back to the legacy ZAZU_* variables. The CLI
+	// dropped them in 2.0, so hide them from the SDK.
 	for _, name := range []string{"ZAZU_API_KEY", "ZAZU_BASE_URL", "ZAZU_API_VERSION"} {
 		os.Unsetenv(name)
 	}
