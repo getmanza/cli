@@ -524,9 +524,11 @@ func printError(rec *recorder, apiErr *manza.Error, format string) {
 		}
 	}
 	if apiErr.Kind == manza.KindPlanLimitReached {
-		out.Set("kind", apiErr.LimitKind)
-		out.Set("current", apiErr.LimitCurrent)
-		out.Set("max", apiErr.LimitMax)
+		for _, key := range []string{"kind", "current", "max"} {
+			if value, ok := payload.Get(key); ok {
+				out.Set(key, value)
+			}
+		}
 	}
 	if requestID := rec.header.Get("X-Request-Id"); requestID != "" {
 		out.Set("request_id", requestID)

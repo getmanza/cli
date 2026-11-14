@@ -271,8 +271,8 @@ func transferDraftRequest(command, id string, f flags) (*apiRequest, error) {
 	}
 }
 
-// transferDraftAction (and transfers get and create) go through
-// Client.Request rather than the typed Payments methods: Payments.Create
+// transferDraftAction builds a payment action on Client.Request, like most
+// commands. transfers create must stay off the typed Payments.Create: it
 // takes a map, which would sort the request body's keys.
 func transferDraftAction(id, action string, body *object) *apiRequest {
 	return &apiRequest{

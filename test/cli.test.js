@@ -382,21 +382,21 @@ test("API errors include response status and body", async () => {
 test("a plan limit error prints its kind, current and max", async () => {
   const configHome = await tempConfigHome();
   let status = 422;
+  let partial = false;
   const server = await createServer((_req, res) => {
     res.setHeader("X-Request-Id", "req_456");
-    sendJSON(
-      res,
-      {
-        error: {
-          type: "plan_limit_reached",
-          message: "Plan limit reached for invoices: 10 of 10",
-          kind: "invoices",
-          current: 10,
-          max: 10,
-        },
-      },
-      status,
-    );
+    const error = {
+      type: "plan_limit_reached",
+      message: "Plan limit reached for invoices: 10 of 10",
+      kind: "invoices",
+      current: 10,
+      max: 10,
+    };
+    if (partial) {
+      delete error.current;
+      delete error.max;
+    }
+    sendJSON(res, { error }, status);
   });
   const args = [
     "--api-key",
@@ -430,6 +430,17 @@ test("a plan limit error prints its kind, current and max", async () => {
         request_id: "req_456",
       })}\n`,
     );
+
+    // A value the API leaves out is not printed as 0.
+    partial = true;
+    const missing = await runCli(args, { configHome, reject: false });
+    assert.deepEqual(Object.keys(JSON.parse(missing.stderr)), [
+      "error",
+      "status",
+      "kind",
+      "request_id",
+    ]);
+    partial = false;
 
     // Only a 422 is a plan cap: the same type on a 500 prints as usual.
     status = 500;
