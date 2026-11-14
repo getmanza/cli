@@ -674,7 +674,7 @@ test("invoices payment-link is gone: it points at --generate-payment-link and se
       assert.equal(result.stdout, "");
       assert.equal(
         result.stderr,
-        "manza invoices payment-link was removed in 2.0: the API no longer has it. Pass --generate-payment-link true to invoices create or update.\n",
+        "manza invoices payment-link was removed in 2.0: the API no longer has it. Pass --account-id <id> --generate-payment-link true to invoices create or update.\n",
       );
     }
 

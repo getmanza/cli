@@ -175,7 +175,7 @@ func invoiceRequest(command, id string, f flags) (*apiRequest, error) {
 
 	if oneOf(command, "payment-link", "payment_link") {
 		return nil, cliErrorf("manza invoices payment-link was removed in 2.0: the API no longer has it. " +
-			"Pass --generate-payment-link true to invoices create or update.")
+			"Pass --account-id <id> --generate-payment-link true to invoices create or update.")
 	}
 	if _, ok := actions[command]; !ok && !oneOf(command, "get", "update", "delete") {
 		return nil, cliErrorf("Usage: manza invoices list|get|create|update|send|mark-as-paid|cancel|credit-note|delete")
