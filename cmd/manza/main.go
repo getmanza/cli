@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	cli "github.com/getmanza/cli"
-	manza "github.com/getmanza/manza-go"
+	manza "github.com/getmanza/manza-go/v2"
 )
 
 func main() {
@@ -180,6 +180,7 @@ func signTransferAuthorization(f flags, config *runConfig) error {
 		AccountID:       f.str("account-id"),
 		Payee:           payee,
 		ClientReference: f.str("client-reference"),
+		TransferMethod:  f.str("transfer-method"),
 	})
 
 	result := newObject()

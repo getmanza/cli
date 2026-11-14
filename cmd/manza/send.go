@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	manza "github.com/getmanza/manza-go"
+	manza "github.com/getmanza/manza-go/v2"
 )
 
 type runConfig struct {
@@ -389,7 +389,7 @@ func encodeQuery(s string) string {
 func (s *sender) handleError(err error) error {
 	var apiErr *manza.Error
 	if errors.As(err, &apiErr) {
-		printError(s.recorder, s.config.output)
+		printError(s.recorder, apiErr, s.config.output)
 		return errAPIPrinted
 	}
 	var argErr *manza.ArgumentError
@@ -470,7 +470,7 @@ var defaultErrorMessages = map[int]string{
 	429: "Rate limited",
 }
 
-func printError(rec *recorder, format string) {
+func printError(rec *recorder, apiErr *manza.Error, format string) {
 	body := rec.parsedBody()
 	payload := newObject()
 	if obj, ok := body.(*object); ok {
@@ -522,6 +522,11 @@ func printError(rec *recorder, format string) {
 		if paymentID, _ := payload.Get("payment_id"); truthy(paymentID) {
 			out.Set("payment_id", paymentID)
 		}
+	}
+	if apiErr.Kind == manza.KindPlanLimitReached {
+		out.Set("kind", apiErr.LimitKind)
+		out.Set("current", apiErr.LimitCurrent)
+		out.Set("max", apiErr.LimitMax)
 	}
 	if requestID := rec.header.Get("X-Request-Id"); requestID != "" {
 		out.Set("request_id", requestID)

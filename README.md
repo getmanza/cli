@@ -15,6 +15,15 @@ Before 1.0 this was the `zazu` CLI (`@getzazu/cli`, `brew install getmanza/tap/z
 
 All of these fallbacks are removed in 2.0.
 
+## Upgrading from 1.x
+
+2.0 follows the Manza API of 2026-11-13 (manza-go 2.0):
+
+- `manza invoices payment-link` is gone, as is the endpoint behind it. Pass `--account-id <id>` (required on create: the account the invoice is paid into) and `--generate-payment-link true` to `manza invoices create` or `update`; the link is made when the invoice is approved.
+- `manza transfers sign` signs v2 (`manza.transfer-authorization.v2|…|<client_reference>|<transfer_method>`). Pass `--transfer-method` as the create response's `transfer_method`, and leave it out when that was null. An authorizer pinned to `Manza-Version: 2026-03-27` still verifies only v1, so stay on 1.x for that one or unpin it.
+- `manza transfers create --transfer-method` picks the rail: `eft` or `rtc` in South Africa, `standard` or `instant` in Morocco.
+- A `plan_limit_reached` error (422) adds its `kind`, `current` and `max` next to `status`, the way a duplicate client reference adds `payment_id`.
+
 ## Install
 
 The CLI ships as a single static Go binary (about 6–7 MB). The Homebrew and direct-download installs need no runtime at all; the npm install needs Node only for the small resolver that launches the binary.
@@ -142,7 +151,7 @@ printf '%s\n' "$MANZA_API_KEY" | manza login --api-key-stdin
 manza logout
 manza config get
 manza config set api-base <api-host>
-manza config set api-version 2026-03-27
+manza config set api-version 2026-11-13
 manza config unset api-version
 ```
 
@@ -172,7 +181,7 @@ manza customers create \
 
 manza invoices create --file invoice.json
 manza invoices send 01964a3b-7c8d-7000-8000-deadbeef1234
-manza invoices payment-link 01964a3b-7c8d-7000-8000-deadbeef1234 --account-id 01964a3b-0000-7000-8000-ac6000000a01
+manza invoices update 01964a3b-7c8d-7000-8000-deadbeef1234 --account-id 01964a3b-0000-7000-8000-ac6000000a01 --generate-payment-link true
 
 manza payment-links create \
   --account-id 01964a3b-0000-7000-8000-ac6000000a01 \
@@ -218,7 +227,7 @@ manza webhook-endpoints list --all
 For nested payloads, use `--data`, `--file`, or `--stdin`:
 
 ```bash
-manza invoices create --data '{"customer_id":"...","issue_date":"2026-03-15","due_date":"2026-04-15","items":[{"description":"Consulting","quantity":10,"unit_price":"150.00"}]}'
+manza invoices create --data '{"customer_id":"...","account_id":"...","issue_date":"2026-03-15","due_date":"2026-04-15","items":[{"description":"Consulting","quantity":10,"unit_price":"150.00"}]}'
 manza invoices create --file invoice.json
 cat invoice.json | manza invoices create --stdin
 ```
@@ -236,12 +245,13 @@ manza transfer-authorizer get
 ```text
 Transfer authorizer: active
 Limits: 5000.0 MAD per transfer, 20000.0 MAD per 24 hours
+New payees: approved up to 1000.0 MAD per transfer
 Last 24 hours: 1500.5 MAD authorized, 18499.5 MAD remaining
 Secret expires: 2027-01-18T00:00:00Z
 Webhook endpoint: 01958e51-7c5a-7000-8000-000000000020
 ```
 
-A suspended authorizer shows its `suspension_reason` (for example `suspended (secret_expired: the signing secret expired)`). The secret's expiry carries a warning within 7 days of it, and says when it has expired. With nothing enrolled the command exits 1 with `No transfer authorizer enrolled: Settings → Developer → Transfer approval`.
+The `New payees` line says whether *Approve transfers to new payees* is on, and up to what amount (`not approved (Approve transfers to new payees is off)` otherwise). A suspended authorizer shows its `suspension_reason` (for example `suspended (secret_expired: the signing secret expired)`). The secret's expiry carries a warning within 7 days of it, and says when it has expired. With nothing enrolled the command exits 1 with `No transfer authorizer enrolled: Settings → Developer → Transfer approval`.
 
 **Why did this payment go to the approvers?**
 
@@ -263,6 +273,7 @@ After the payment's JSON, stderr carries one `Approval:` line: `challenge sent t
 | `secret_expired` | The signing secret passed secret_expires_at | An approver rotates the secret in the app and resumes; deploy the new secret |
 | `signature_failed` | Five invalid signatures on one challenge | Build the signed string with `manza transfers sign` and the current secret |
 | `stale` | The transfer, the payee's bank details or the enrolled endpoint changed after the challenge was sent | Create a new transfer; do not edit it or its payee while a challenge is open |
+| `rail_limit_exceeded` | The challenge was authorized, but the transfer's rail (an instant transfer's daily cap) refused it before anything was sent | Have an approver send it on the standard rail in the app, or create the next one without the instant rail |
 | `expired` | Nobody answered the challenge within one hour | Check that your receiver got the webhook (below) and called authorize |
 
 **Does this captured webhook verify with my secret?**
@@ -304,14 +315,13 @@ manza customers delete <id>
 
 manza invoices list [--status value] [--customer-id id] [--limit n] [--cursor value] [--all|--max-items n]
 manza invoices get <id>
-manza invoices create [--data json|--file path|--stdin] [invoice flags]
-manza invoices update <id> [--data json|--file path|--stdin] [invoice flags]
+manza invoices create [--data json|--file path|--stdin] [--account-id id] [--generate-payment-link true|false] [invoice flags]
+manza invoices update <id> [--data json|--file path|--stdin] [--account-id id] [--generate-payment-link true|false] [invoice flags]
 manza invoices send <id>
 manza invoices mark-as-paid <id>
 manza invoices cancel <id>
 manza invoices credit-note <id>
 manza invoices delete <id>
-manza invoices payment-link <id> --account-id <account-id>
 
 manza payment-links list [--status value] [--link-type value] [--limit n] [--cursor value] [--all|--max-items n]
 manza payment-links get <id>
@@ -333,11 +343,11 @@ manza webhooks verify (--secret-env <VAR>|--secret <secret>) --timestamp <t> --s
 manza checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
 manza checkout-sessions get <id>
 
-manza transfers create [--data json|--file path|--stdin] [transfer flags] [--client-reference ref]
+manza transfers create [--data json|--file path|--stdin] [transfer flags] [--client-reference ref] [--transfer-method method]
 manza transfers get <id>
 manza transfers authorize <id> --authorization-id <id> --signature <hex>
 manza transfers decline <id> --authorization-id <id> [--reason text]
-manza transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref]
+manza transfers sign --secret-env <VAR> --payment-id <id> --nonce <nonce> --amount <decimal> --currency-code <code> --account-id <id> (--external-account-id <id>|--destination-account-id <id>) [--client-reference ref] [--transfer-method method]
 
 manza transfer-authorizer get
 

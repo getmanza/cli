@@ -27,7 +27,7 @@ func customerBody(f flags) (*object, error) {
 
 func invoiceBody(f flags) (*object, error) {
 	body := pick(f, "customer-id", "currency-code", "issue-date", "due-date", "reference", "notes",
-		"payment-terms", "send-to-email")
+		"payment-terms", "send-to-email", "account-id", "generate-payment-link")
 	for _, field := range [][2]string{{"item", "items"}, {"discount", "discounts"}} {
 		if !f.has(field[0]) {
 			continue

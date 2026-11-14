@@ -22,6 +22,7 @@ var refusalReasons = map[string]string{
 	"signature_failed":     "Five invalid signatures on one challenge",
 	"stale":                "The transfer, the payee's bank details or the enrolled endpoint changed after the challenge was sent",
 	"expired":              "Nobody answered the challenge within one hour",
+	"rail_limit_exceeded":  "The challenge was authorized, but the transfer's rail (an instant transfer's daily cap) refused it before anything was sent",
 }
 
 // suspensionReasons explains a suspended authorizer's suspension_reason.
@@ -104,14 +105,20 @@ func authorizerNote(body any) []string {
 		}
 	}
 
-	return []string{
+	lines := []string{
 		status,
 		"Limits: " + field(authorizer, "per_transfer_limit") + " " + currency + " per transfer, " +
 			dailyLimit + " " + currency + " per 24 hours",
-		usage,
-		expiry,
-		"Webhook endpoint: " + field(authorizer, "webhook_endpoint_id"),
 	}
+	// trust_new_payees is absent from an API older than 2026-11-13.
+	if trust, ok := authorizer.Get("trust_new_payees"); ok {
+		if trust == true {
+			lines = append(lines, "New payees: approved up to "+field(authorizer, "new_payee_limit")+" "+currency+" per transfer")
+		} else {
+			lines = append(lines, "New payees: not approved (Approve transfers to new payees is off)")
+		}
+	}
+	return append(lines, usage, expiry, "Webhook endpoint: "+field(authorizer, "webhook_endpoint_id"))
 }
 
 // decimalRemaining is limit - used (never below zero) as a decimal string

@@ -98,7 +98,11 @@ test("resource help does not require authentication", async () => {
 
     const result = await runCli(["invoices", "--help"], { configHome });
     assert.match(result.stdout, /Manza CLI - invoices/);
-    assert.match(result.stdout, /manza invoices payment-link <id> --account-id <account-id>/);
+    assert.match(
+      result.stdout,
+      /manza invoices create \[--data json\|--file path\|--stdin\] \[--account-id id\] \[--generate-payment-link true\|false\]/,
+    );
+    assert.doesNotMatch(result.stdout, /payment-link </);
     assert.doesNotMatch(result.stdout, /Global flags:/);
   } finally {
     await rm(configHome, { recursive: true, force: true });
@@ -375,6 +379,71 @@ test("API errors include response status and body", async () => {
   }
 });
 
+test("a plan limit error prints its kind, current and max", async () => {
+  const configHome = await tempConfigHome();
+  let status = 422;
+  const server = await createServer((_req, res) => {
+    res.setHeader("X-Request-Id", "req_456");
+    sendJSON(
+      res,
+      {
+        error: {
+          type: "plan_limit_reached",
+          message: "Plan limit reached for invoices: 10 of 10",
+          kind: "invoices",
+          current: 10,
+          max: 10,
+        },
+      },
+      status,
+    );
+  });
+  const args = [
+    "--api-key",
+    "sk_live_test",
+    "--base-url",
+    server.baseURL,
+    "invoices",
+    "create",
+    "--customer-id",
+    "cus_1",
+  ];
+
+  try {
+    const result = await runCli(args, { configHome, reject: false });
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(
+      result.stderr,
+      `${JSON.stringify({
+        error: {
+          type: "plan_limit_reached",
+          message: "Plan limit reached for invoices: 10 of 10",
+          kind: "invoices",
+          current: 10,
+          max: 10,
+        },
+        status: 422,
+        kind: "invoices",
+        current: 10,
+        max: 10,
+        request_id: "req_456",
+      })}\n`,
+    );
+
+    // Only a 422 is a plan cap: the same type on a 500 prints as usual.
+    status = 500;
+    const server500 = await runCli(args, { configHome, reject: false });
+    assert.equal(server500.code, 1);
+    const payload = JSON.parse(server500.stderr);
+    assert.equal(payload.status, 500);
+    assert.deepEqual(Object.keys(payload), ["error", "status", "request_id"]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
 test("requests time out with a clear error", async () => {
   const configHome = await tempConfigHome();
   const server = await createServer(() => {});
@@ -437,6 +506,8 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
         "INV-001",
         "--client-reference",
         "po_1",
+        "--transfer-method",
+        "instant",
       ],
       { configHome },
     );
@@ -483,12 +554,129 @@ test("transfer and beneficiary commands map to the API endpoints", async () => {
           amount: "150.00",
           payment_reference: "INV-001",
           client_reference: "po_1",
+          transfer_method: "instant",
         }),
       },
       { method: "GET", url: "/api/payments/td_123", body: "" },
       { method: "GET", url: "/api/beneficiaries?limit=5", body: "" },
       { method: "GET", url: "/api/beneficiaries/ben_123", body: "" },
     ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("invoice commands send account_id and generate_payment_link", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer(async (req, res) => {
+    requests.push({ method: req.method, url: req.url, body: await readRequestBody(req) });
+    sendJSON(res, { id: "inv_1", generate_payment_link: true });
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    await runCli(
+      [
+        ...api,
+        "invoices",
+        "create",
+        "--customer-id",
+        "cus_1",
+        "--account-id",
+        "acc_1",
+        "--issue-date",
+        "2026-11-14",
+        "--due-date",
+        "2026-12-14",
+        "--generate-payment-link",
+        "true",
+        "--item",
+        '{"description":"Consulting","quantity":1,"unit_price":"150.00"}',
+      ],
+      { configHome },
+    );
+    await runCli(
+      [
+        ...api,
+        "invoices",
+        "update",
+        "inv_1",
+        "--account-id",
+        "acc_2",
+        "--generate-payment-link",
+        "false",
+      ],
+      { configHome },
+    );
+    await runCli([...api, "invoices", "update", "inv_1", "--data", '{"account_id":"acc_3"}'], {
+      configHome,
+    });
+
+    assert.deepEqual(requests, [
+      {
+        method: "POST",
+        url: "/api/invoices",
+        body: JSON.stringify({
+          customer_id: "cus_1",
+          issue_date: "2026-11-14",
+          due_date: "2026-12-14",
+          account_id: "acc_1",
+          generate_payment_link: true,
+          items: [{ description: "Consulting", quantity: 1, unit_price: "150.00" }],
+        }),
+      },
+      {
+        method: "PATCH",
+        url: "/api/invoices/inv_1",
+        body: JSON.stringify({ account_id: "acc_2", generate_payment_link: false }),
+      },
+      {
+        method: "PATCH",
+        url: "/api/invoices/inv_1",
+        body: JSON.stringify({ account_id: "acc_3" }),
+      },
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("invoices payment-link is gone: it points at --generate-payment-link and sends nothing", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const server = await createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    sendJSON(res, { ok: true });
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    for (const command of ["payment-link", "payment_link"]) {
+      const result = await runCli([...api, "invoices", command, "inv_1", "--account-id", "acc_1"], {
+        configHome,
+        reject: false,
+      });
+      assert.equal(result.code, 1);
+      assert.equal(result.stdout, "");
+      assert.equal(
+        result.stderr,
+        "manza invoices payment-link was removed in 2.0: the API no longer has it. Pass --generate-payment-link true to invoices create or update.\n",
+      );
+    }
+
+    const usage = await runCli([...api, "invoices", "bogus", "inv_1"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(usage.code, 1);
+    assert.equal(
+      usage.stderr,
+      "Usage: manza invoices list|get|create|update|send|mark-as-paid|cancel|credit-note|delete\n",
+    );
+    assert.deepEqual(requests, []);
   } finally {
     await server.close();
     await rm(configHome, { recursive: true, force: true });
@@ -961,6 +1149,11 @@ test("transfers get prints the payment's approval in words on stderr", async () 
       id: "pay_superseded",
       authorization: { id: "auth_7", status: "superseded", refusal_reason: null },
     },
+    "/api/payments/pay_rail_limit": {
+      id: "pay_rail_limit",
+      transfer_method: "instant",
+      authorization: { id: "auth_8", status: "superseded", refusal_reason: "rail_limit_exceeded" },
+    },
     "/api/payments/pay_none": { id: "pay_none", authorization: null },
     "/api/payments/pay_legacy": { id: "pay_legacy", status: "requested" },
   };
@@ -997,6 +1190,10 @@ test("transfers get prints the payment's approval in words on stderr", async () 
     assert.equal(
       (await get("pay_superseded")).stderr,
       "Approval: superseded; sent to your approvers\n",
+    );
+    assert.equal(
+      (await get("pay_rail_limit")).stderr,
+      "Approval: sent to your approvers: The challenge was authorized, but the transfer's rail (an instant transfer's daily cap) refused it before anything was sent (rail_limit_exceeded)\n",
     );
     assert.equal(
       (await get("pay_none")).stderr,
@@ -1074,6 +1271,20 @@ test("transfer-authorizer get prints the JSON and a summary on stderr", async ()
         "Webhook endpoint: weh_1",
         "",
       ].join("\n"),
+    );
+
+    body = authorizer({ trust_new_payees: true, new_payee_limit: "1000.0" });
+    const trusting = await runCli([...api, "transfer-authorizer", "get"], { configHome });
+    assert.match(
+      trusting.stderr,
+      /\nLimits: [^\n]+\nNew payees: approved up to 1000\.0 MAD per transfer\nLast 24 hours: /,
+    );
+
+    body = authorizer({ trust_new_payees: false, new_payee_limit: null });
+    const notTrusting = await runCli([...api, "transfer-authorizer", "get"], { configHome });
+    assert.match(
+      notTrusting.stderr,
+      /\nNew payees: not approved \(Approve transfers to new payees is off\)\nLast 24 hours: /,
     );
 
     body = authorizer({ secret_expires_at: inDays(3) });
@@ -1454,7 +1665,7 @@ test("payee trust request create requires an external account id", async () => {
   }
 });
 
-// Shared vector from zazu-ruby spec/zazu/transfer_authorization_spec.rb.
+// Shared v2 vectors from manza-ruby spec/manza/transfer_authorization_spec.rb.
 const SIGN_FIELDS = [
   "--payment-id",
   "0199a1b2-0000-7000-8000-000000000001",
@@ -1484,13 +1695,36 @@ test("transfers sign reproduces the shared signer vector without an API key", as
         "0199a1b2-0000-7000-8000-000000000003",
         "--client-reference",
         "po_1",
+        "--transfer-method",
+        "eft",
       ],
       { configHome, env },
     );
     assert.deepEqual(JSON.parse(external.stdout), {
-      signature: "6e8eaec0f89a4eb3b22df1133b3d6dfebfa8505c34c58ed0ff192516e4223078",
+      signature: "904da7d0b73b2c919ffa1ae64d262ce5825ee4d2c8420fd70a3d257353e6c43a",
       signature_input:
-        "manza.transfer-authorization.v1|0199a1b2-0000-7000-8000-000000000001|n0nce-0123456789abcdef|2500.0|MAD|0199a1b2-0000-7000-8000-000000000002|ext:0199a1b2-0000-7000-8000-000000000003|po_1",
+        "manza.transfer-authorization.v2|0199a1b2-0000-7000-8000-000000000001|n0nce-0123456789abcdef|2500.0|MAD|0199a1b2-0000-7000-8000-000000000002|ext:0199a1b2-0000-7000-8000-000000000003|po_1|eft",
+    });
+
+    // No --transfer-method: the payment's rail was null, an empty segment.
+    const noMethod = await runCli(
+      [
+        "transfers",
+        "sign",
+        "--secret-env",
+        "AUTHORIZER_SECRET",
+        ...SIGN_FIELDS,
+        "--external-account-id",
+        "0199a1b2-0000-7000-8000-000000000003",
+        "--client-reference",
+        "po_1",
+      ],
+      { configHome, env },
+    );
+    assert.deepEqual(JSON.parse(noMethod.stdout), {
+      signature: "029dd12924a846d7af2f4aecb61e4f4f9bd64d37315230864fb03917adc29edf",
+      signature_input:
+        "manza.transfer-authorization.v2|0199a1b2-0000-7000-8000-000000000001|n0nce-0123456789abcdef|2500.0|MAD|0199a1b2-0000-7000-8000-000000000002|ext:0199a1b2-0000-7000-8000-000000000003|po_1|",
     });
 
     const own = await runCli(
@@ -1505,10 +1739,11 @@ test("transfers sign reproduces the shared signer vector without an API key", as
       ],
       { configHome, env },
     );
-    assert.equal(
-      JSON.parse(own.stdout).signature,
-      "af9440b1de1bebb51f381ce43e3d0d27b6a4ccb99dcd548c0b5435ff4fdd1895",
-    );
+    assert.deepEqual(JSON.parse(own.stdout), {
+      signature: "a21ccf43b94f23d7a595a36bd788c27c7adbc5686a5ad4427b22d9957568c9fb",
+      signature_input:
+        "manza.transfer-authorization.v2|0199a1b2-0000-7000-8000-000000000001|n0nce-0123456789abcdef|2500.0|MAD|0199a1b2-0000-7000-8000-000000000002|own:0199a1b2-0000-7000-8000-000000000004||",
+    });
   } finally {
     await rm(configHome, { recursive: true, force: true });
   }
