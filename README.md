@@ -10,7 +10,7 @@ Before 1.0 this was the `zazu` CLI (`@getzazu/cli`, `brew install getmanza/tap/z
 
 - The npm package installs only `manza`; there is no `zazu` command. Run `manza`.
 - `~/.config/zazu/config.json` is no longer read. Any 1.x write (`manza login`, `manza config set`, ...) already copied it to `~/.config/manza/config.json`; if you never wrote one, run `manza login` again. Then delete `~/.config/zazu/config.json`: it still holds your API key.
-- `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_VERSION` and `ZAZU_TIMEOUT_MS` are no longer read, so a script that sets only those runs with no API key, the default host and no version pin. Use the `MANZA_*` names below.
+- `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_VERSION`, `ZAZU_API_VERSION` and `ZAZU_TIMEOUT_MS` are no longer read. Without `MANZA_*` values, flags or a saved config, a script that sets only those runs with no API key, the default host and no version pin. Use the `MANZA_*` names below.
 - The Homebrew `zazu` formula is frozen at 0.x. Switch with `brew uninstall zazu && brew install getmanza/tap/manza`.
 
 ## Upgrading from 1.x
