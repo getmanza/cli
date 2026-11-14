@@ -1,0 +1,19 @@
+cmd/manza/config_test.go
+  s_dc417254daa132::t_5193111fb810b3 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "09c14df3ffd000bb7419b135525eaa7a44807b43",
+  "prompts": {},
+  "sessions": {
+    "s_dc417254daa132": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ea9c3c4-d3a6-4c56-8e33-bcc56843e7e7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
