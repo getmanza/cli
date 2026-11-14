@@ -5,18 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	cli "github.com/getmanza/cli"
 	manza "github.com/getmanza/manza-go/v2"
 )
 
 func main() {
-	// The zazu name keeps working for all of 1.x; removed in 2.0.
-	if filepath.Base(os.Args[0]) == "zazu" {
-		fmt.Fprintln(os.Stderr, "zazu is deprecated and will be removed in 2.0. Use manza instead.")
-	}
-
 	err := run(os.Args[1:])
 	if err == nil {
 		return

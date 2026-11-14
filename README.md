@@ -6,18 +6,16 @@ The CLI defaults to Morocco production at `https://ma.manza.finance`. Use `--bas
 
 ## Renamed from zazu
 
-Before 1.0 this was the `zazu` CLI (`@getzazu/cli`, `brew install getmanza/tap/zazu`). For all of 1.x:
+Before 1.0 this was the `zazu` CLI (`@getzazu/cli`, `brew install getmanza/tap/zazu`). 1.x kept the old name working; 2.0 removes it:
 
-- `zazu` still works when installed from npm, or when the binary is invoked as `zazu` (e.g. a symlink). It prints a deprecation notice, then runs `manza`.
-- An existing login in `~/.config/zazu/config.json` is still read. The first write (`manza login`, `manza config set`, ...) copies it to `~/.config/manza/config.json` and leaves the old file in place. `manza logout` only clears the new file, so delete `~/.config/zazu/config.json` once you no longer run a 0.x `zazu`: it still holds your API key.
-- The `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_VERSION` and `ZAZU_TIMEOUT_MS` variables still work, with a deprecation warning. Use the `MANZA_*` names below.
-- The Homebrew `zazu` formula is deprecated. Switch with `brew uninstall zazu && brew install getmanza/tap/manza`.
-
-All of these fallbacks are removed in 2.0.
+- The npm package installs only `manza`; there is no `zazu` command. Run `manza`.
+- `~/.config/zazu/config.json` is no longer read. Any 1.x write (`manza login`, `manza config set`, ...) already copied it to `~/.config/manza/config.json`; if you never wrote one, run `manza login` again. Then delete `~/.config/zazu/config.json`: it still holds your API key.
+- `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_VERSION` and `ZAZU_TIMEOUT_MS` are no longer read, so a script that sets only those runs with no API key, the default host and no version pin. Use the `MANZA_*` names below.
+- The Homebrew `zazu` formula is frozen at 0.x. Switch with `brew uninstall zazu && brew install getmanza/tap/manza`.
 
 ## Upgrading from 1.x
 
-2.0 follows the Manza API of 2026-11-13 (manza-go 2.0):
+2.0 drops the zazu name (above) and follows the Manza API of 2026-11-13 (manza-go 2.0):
 
 - `manza invoices payment-link` is gone, as is the endpoint behind it. Pass `--account-id <id>` (required on create: the account the invoice is paid into) and `--generate-payment-link true` to `manza invoices create` or `update`; the link is made when the invoice is approved.
 - `manza transfers sign` signs v2 (`manza.transfer-authorization.v2|…|<client_reference>|<transfer_method>`). Pass `--transfer-method` as the create response's `transfer_method`, and leave it out when that was null. The API verifies v2 on every authorize call except one pinned to `Manza-Version: 2026-03-27`, which still verifies only v1. If you set that version (`manza config set api-version 2026-03-27`, `MANZA_API_VERSION` or `--api-version`; `manza config get api-version` shows the stored one), `manza transfers authorize` sends it too: unset it (`manza config unset api-version`) or stay on 1.x. Five invalid signatures fail a challenge, and five in a row suspend the authorizer.
