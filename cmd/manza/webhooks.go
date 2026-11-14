@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	manza "github.com/getmanza/manza-go"
+	manza "github.com/getmanza/manza-go/v2"
 	"golang.org/x/term"
 )
 

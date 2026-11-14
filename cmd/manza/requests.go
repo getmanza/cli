@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	manza "github.com/getmanza/manza-go"
+	manza "github.com/getmanza/manza-go/v2"
 )
 
 const listPageSize = 100
@@ -173,8 +173,12 @@ func invoiceRequest(command, id string, f flags) (*apiRequest, error) {
 		return &apiRequest{method: "POST", path: "/api/invoices", body: bodyFromFlags(f, body)}, nil
 	}
 
-	if _, ok := actions[command]; !ok && !oneOf(command, "get", "update", "delete", "payment-link", "payment_link") {
-		return nil, cliErrorf("Usage: manza invoices list|get|create|update|send|mark-as-paid|cancel|credit-note|delete|payment-link")
+	if oneOf(command, "payment-link", "payment_link") {
+		return nil, cliErrorf("manza invoices payment-link was removed in 2.0: the API no longer has it. " +
+			"Pass --account-id <id> --generate-payment-link true to invoices create or update.")
+	}
+	if _, ok := actions[command]; !ok && !oneOf(command, "get", "update", "delete") {
+		return nil, cliErrorf("Usage: manza invoices list|get|create|update|send|mark-as-paid|cancel|credit-note|delete")
 	}
 	if err := requireString(id, "invoice id"); err != nil {
 		return nil, err
@@ -190,8 +194,6 @@ func invoiceRequest(command, id string, f flags) (*apiRequest, error) {
 			return nil, err
 		}
 		return &apiRequest{method: "PATCH", path: path, body: bodyFromFlags(f, body)}, nil
-	case "payment-link", "payment_link":
-		return &apiRequest{method: "POST", path: path + "/payment_link", body: bodyFromFlags(f, pick(f, "account-id"))}, nil
 	default:
 		return &apiRequest{method: "POST", path: path + "/" + actions[command]}, nil
 	}
@@ -224,7 +226,7 @@ func transferDraftRequest(command, id string, f flags) (*apiRequest, error) {
 	switch command {
 	case "create":
 		body := pick(f, "account-id", "beneficiary-id", "external-account-id", "destination-account-id",
-			"amount", "currency-code", "payment-reference", "internal-notes", "client-reference")
+			"amount", "currency-code", "payment-reference", "internal-notes", "client-reference", "transfer-method")
 		return &apiRequest{method: "POST", path: "/api/payments", body: bodyFromFlags(f, body), alwaysBody: true}, nil
 	case "get":
 		if err := requireString(id, "payment id"); err != nil {
@@ -269,10 +271,8 @@ func transferDraftRequest(command, id string, f flags) (*apiRequest, error) {
 	}
 }
 
-// transferDraftAction (and transfers get and create) go through
-// Client.Request rather than the typed Payments methods: manza-go v1.1.0
-// escapes the "api/payments" base of by-id paths into "api%2Fpayments"
-// (https://github.com/getmanza/manza-go/issues/14), and Payments.Create
+// transferDraftAction builds a payment action on Client.Request, like most
+// commands. transfers create must stay off the typed Payments.Create: it
 // takes a map, which would sort the request body's keys.
 func transferDraftAction(id, action string, body *object) *apiRequest {
 	return &apiRequest{

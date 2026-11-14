@@ -9,7 +9,7 @@ Command-line interface for the Manza API (renamed from zazu in 1.0). Go source i
 | Concern | Tool | Notes |
 |---|---|---|
 | Language | Go 1.26+ | `go.mod`, `cmd/manza/`; `version.go` embeds `package.json`'s version |
-| HTTP / errors | `github.com/getmanza/manza-go` | The CLI is a thin wrapper over the SDK |
+| HTTP / errors | `github.com/getmanza/manza-go/v2` | The CLI is a thin wrapper over the SDK |
 | Test runner | `go test` (unit) + `bun test` (CLI suite) | `test/cli.test.js` runs the compiled binary |
 | Lint + format | `go vet` + `gofmt`; Biome 2.x for the JS test suite | `bun run lint` runs all three |
 | Distribution | `CGO_ENABLED=0 go build` per target + per-platform npm packages | `scripts/build`, `scripts/npm-publish` |
@@ -22,12 +22,12 @@ Command-line interface for the Manza API (renamed from zazu in 1.0). Go source i
 | `manza entity get` | Fetch the entity record |
 | `manza accounts list/get/transactions/transaction` | Account + transaction reads |
 | `manza customers list/get/create/update/delete` | Customer CRUD |
-| `manza invoices list/get/create/update/send/mark-as-paid/cancel/credit-note/delete/payment-link` | Invoice ops |
+| `manza invoices list/get/create/update/send/mark-as-paid/cancel/credit-note/delete` | Invoice ops; create/update take `--account-id` and `--generate-payment-link` (`payment-link` was removed in 2.0) |
 | `manza payment-links list/get/create/cancel` | Payment-link ops |
 | `manza webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable` | Webhook config |
 | `manza checkout-sessions create/get` | Hosted checkout sessions |
-| `manza transfers create/get/authorize/decline/sign` | Payments (`/api/payments`); `get` adds an `Approval:` line on stderr; `sign` computes the authorization signature locally from `--secret-env` |
-| `manza transfer-authorizer get` | The enrolled transfer authorizer; a status/limits/usage/secret-expiry summary on stderr |
+| `manza transfers create/get/authorize/decline/sign` | Payments (`/api/payments`); `create` and `sign` take `--transfer-method`; `get` adds an `Approval:` line on stderr; `sign` computes the v2 authorization signature locally from `--secret-env` |
+| `manza transfer-authorizer get` | The enrolled transfer authorizer; a status/limits/new-payee/usage/secret-expiry summary on stderr |
 | `manza webhooks verify` | Checks a captured webhook delivery locally (secret from `--secret-env` or `--secret`) (`manza.ConstructWebhookEvent`); prints `valid` or the reason |
 | `manza beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
 | `manza payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
@@ -179,5 +179,5 @@ The CLI consumes `manza-go`, which mirrors `manza-ruby`'s public surface and rep
 ## Repository links
 
 - Ruby SDK (reference): https://github.com/getmanza/manza-ruby
-- Go SDK: https://github.com/getmanza/manza-go (`github.com/getmanza/manza-go`)
+- Go SDK: https://github.com/getmanza/manza-go (`github.com/getmanza/manza-go/v2`)
 - This repo: https://github.com/getmanza/cli (https://www.npmjs.com/package/@getmanza/cli)
