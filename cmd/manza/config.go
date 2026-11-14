@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -16,9 +15,8 @@ const (
 
 var formats = setOf("json", "pretty", "raw")
 
-// storedConfig is ~/.config/manza/config.json, falling back to the 1.0-era
-// ~/.config/zazu/config.json. Saves always go to the manza path, so the
-// first write copies a legacy config over and leaves the old file alone.
+// storedConfig is ~/.config/manza/config.json. 2.0 no longer reads the
+// pre-1.0 ~/.config/zazu/config.json.
 type storedConfig struct {
 	values *object
 	// path is the file the config was read from, for `config get`.
@@ -31,30 +29,27 @@ func loadStoredConfig(ignoreInvalid bool) (*storedConfig, error) {
 	if checkConfigRoot() != nil {
 		return &storedConfig{values: newObject()}, nil
 	}
-	for _, path := range []string{storedConfigPath(), legacyConfigPath()} {
-		raw, err := os.ReadFile(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		config := &storedConfig{values: newObject(), path: path}
-		parsed, err := parseJSONFlag(string(raw), path)
-		if err != nil {
-			if ignoreInvalid {
-				return config, nil
-			}
-			return nil, err
-		}
-		if obj, ok := parsed.(*object); ok {
-			config.values = obj
-		}
+	path := storedConfigPath()
+	config := &storedConfig{values: newObject(), path: path}
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
 		return config, nil
 	}
+	if err != nil {
+		return nil, err
+	}
 
-	return &storedConfig{values: newObject(), path: storedConfigPath()}, nil
+	parsed, err := parseJSONFlag(string(raw), path)
+	if err != nil {
+		if ignoreInvalid {
+			return config, nil
+		}
+		return nil, err
+	}
+	if obj, ok := parsed.(*object); ok {
+		config.values = obj
+	}
+	return config, nil
 }
 
 // get is the value when truthy, else "".
@@ -91,10 +86,6 @@ func checkConfigRoot() error {
 	return nil
 }
 
-// legacyConfigPath is read-only for all of 1.x: CLI versions before 1.0
-// stored their login under zazu/.
-func legacyConfigPath() string { return filepath.Join(configRoot(), "zazu", "config.json") }
-
 func configRoot() string {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
 		return dir
@@ -103,24 +94,9 @@ func configRoot() string {
 	return filepath.Join(home, ".config")
 }
 
-// env reads MANZA_<name>, else the legacy ZAZU_* name with a deprecation
-// warning. The CLI-only ZAZU_VERSION maps to MANZA_API_VERSION. Empty means
-// unset.
-func env(name string) string {
-	if value := os.Getenv("MANZA_" + name); value != "" {
-		return value
-	}
-
-	legacy := "ZAZU_" + name
-	if name == "API_VERSION" {
-		legacy = "ZAZU_VERSION"
-	}
-	value := os.Getenv(legacy)
-	if value != "" {
-		fmt.Fprintf(os.Stderr, "[manza] %s is deprecated and will be removed in 2.0. Use MANZA_%s instead.\n", legacy, name)
-	}
-	return value
-}
+// env reads MANZA_<name>. Empty means unset. 2.0 removed the ZAZU_*
+// fallbacks.
+func env(name string) string { return os.Getenv("MANZA_" + name) }
 
 func outputFormat(globals flags) string {
 	switch {

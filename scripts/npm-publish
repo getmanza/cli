@@ -8,8 +8,7 @@
 #   @getmanza/cli-linux-arm64      - holds the linux-arm64 binary
 #   @getmanza/cli-linux-x64        - holds the linux-x64 binary
 #
-# The parent installs two commands: `manza`, and `zazu`, a deprecated
-# alias for all of 1.x that prints a notice and then runs `manza`.
+# The parent installs one command: `manza`.
 #
 # npm only installs the platform package matching the user's OS+CPU
 # (via `os` and `cpu` fields). The parent package depends on all four
@@ -136,7 +135,7 @@ cat > "${parent_dir}/package.json" <<JSON
   },
   "bugs": { "url": "https://github.com/getmanza/cli/issues" },
   "keywords": ["manza", "cli", "api", "invoices", "payments"],
-  "bin": { "manza": "bin/manza.js", "zazu": "bin/zazu.js" },
+  "bin": { "manza": "bin/manza.js" },
   "files": ["bin"],
   "optionalDependencies": {
     "@getmanza/cli-darwin-arm64": "${VERSION}",
@@ -193,16 +192,6 @@ if (result.error) {
 process.exit(result.status ?? 0);
 JS
 chmod +x "${parent_dir}/bin/manza.js"
-
-# Deprecated `zazu` command for all of 1.x: print a notice, then run manza.
-cat > "${parent_dir}/bin/zazu.js" <<'JS'
-#!/usr/bin/env node
-"use strict";
-
-console.error("zazu is deprecated and will be removed in 2.0. Use manza instead.");
-require("./manza.js");
-JS
-chmod +x "${parent_dir}/bin/zazu.js"
 
 # Copy the README into the parent package so it shows on npmjs.com.
 cp README.md "${parent_dir}/README.md"

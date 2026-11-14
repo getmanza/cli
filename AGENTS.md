@@ -2,7 +2,7 @@
 
 Project instructions for every agent: Claude Code (`CLAUDE.md` imports this file); other agents read this file directly. Claude's workflow comes from the `flow` plugin (`.claude/settings.json`), which acts on the facts in `## Workflow` below.
 
-Command-line interface for the Manza API (renamed from zazu in 1.0). Go source in `cmd/manza/`, compiled to a static ~6 MB binary per platform so end users don't need a runtime installed. Ported from Bun/TypeScript in 1.1 (the Bun binaries were 60–97 MB).
+Command-line interface for the Manza API (renamed from zazu in 1.0; the zazu name, `ZAZU_*` variables and zazu config path were removed in 2.0). Go source in `cmd/manza/`, compiled to a static ~6 MB binary per platform so end users don't need a runtime installed. Ported from Bun/TypeScript in 1.1 (the Bun binaries were 60–97 MB).
 
 ## Stack
 
@@ -18,7 +18,7 @@ Command-line interface for the Manza API (renamed from zazu in 1.0). Go source i
 
 | Command | Purpose |
 |---|---|
-| `manza login` / `logout` / `config` | API key + base URL storage in `~/.config/manza/config.json` (falls back to reading `~/.config/zazu/config.json`) |
+| `manza login` / `logout` / `config` | API key + base URL storage in `~/.config/manza/config.json` |
 | `manza entity get` | Fetch the entity record |
 | `manza accounts list/get/transactions/transaction` | Account + transaction reads |
 | `manza customers list/get/create/update/delete` | Customer CRUD |
@@ -50,8 +50,8 @@ Global flags: `--api-key`, `--api-key-stdin`, `--base-url`, `--api-version`, `--
 - **No long-lived `NPM_TOKEN`.** Releases publish via npm OIDC trusted publishing through the `release` GitHub environment. Each of the **five** published packages — `@getmanza/cli`, `@getmanza/cli-darwin-arm64`, `@getmanza/cli-darwin-x64`, `@getmanza/cli-linux-arm64`, `@getmanza/cli-linux-x64` — needs its own trusted-publisher binding at `https://www.npmjs.com/package/<name>/access`, set up and verified before the first 1.0 release (the `@getzazu/*` bindings don't carry over). All five point at this repo's `release.yml` workflow + `release` environment. Adding a new platform target means adding a fifth, sixth, etc. binding before its first publish.
 - **Publish with `npx --yes npm@latest publish`**, not `npm install -g npm@latest && npm publish`, and no `registry-url` on `setup-node`: it writes `_authToken=${NODE_AUTH_TOKEN}` to `.npmrc`, npm then skips OIDC and a trusted-publishing publish returns 404. A user on an OS/arch outside `darwin|linux` × `arm64|x64` gets the shim's clear error; adding a target means `scripts/build` and a new trusted-publisher binding.
 - **Per-platform packages, not a JS shim.** The published `@getmanza/cli` is a resolver that delegates to `@getmanza/cli-darwin-arm64` / `cli-darwin-x64` / `cli-linux-arm64` / `cli-linux-x64`. Same pattern as esbuild, swc, biome, turbo. Don't bundle the binary into the parent package.
-- **Backwards-compatible config layout.** `~/.config/manza/config.json` is read by every 1.x+ CLI; for all of 1.x the CLI falls back to reading `~/.config/zazu/config.json` and copies it to the manza path on first write. Don't change the schema without a migration path.
-- **Legacy names until 2.0.** The `zazu` command (npm shim, and the binary itself when invoked as `zazu`), the `ZAZU_*` env vars (with a deprecation warning) and the zazu config path all keep working for 1.x. Remove them together in 2.0.
+- **Backwards-compatible config layout.** `~/.config/manza/config.json` is read by every 1.x+ CLI. Don't change the schema without a migration path.
+- **No legacy names.** 2.0 removed the `zazu` command (npm shim and the binary's own notice), the `ZAZU_*` env vars and the zazu config path. Don't bring them back; manza-go still reads `ZAZU_*`, so `newSender` keeps unsetting them before it builds the client.
 - **Never escape backticks in PR bodies.** With `<<'EOF'` (single-quoted heredoc) the shell passes everything through verbatim. Typing `` \` `` produces literal `` \` `` in the rendered PR. See "PR descriptions" below.
 
 ## PR descriptions
