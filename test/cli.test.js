@@ -812,6 +812,145 @@ test("webhook endpoints list supports pagination", async () => {
   }
 });
 
+test("webhook delivery commands map to the API endpoints", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const delivery = { id: "whd_1", endpoint_id: "weh_1", status: "failed", attempts: 3 };
+  const server = await createServer(async (req, res) => {
+    requests.push({ method: req.method, url: req.url, body: await readRequestBody(req) });
+    if (req.url.startsWith("/api/webhook_endpoints/weh_1/deliveries")) {
+      const second = req.url.includes("cursor=c2");
+      sendJSON(res, {
+        data: [{ ...delivery, id: second ? "whd_2" : "whd_1" }],
+        has_more: !second,
+        next_cursor: second ? null : "c2",
+      });
+    } else if (req.url === "/api/webhook_deliveries/whd_1/retry") {
+      sendJSON(res, { delivery_id: "whd_1", status: "queued" }, 202);
+    } else if (req.url === "/api/webhook_endpoints/weh_1/retry_failed") {
+      sendJSON(res, { status: "queued", count: 2 }, 202);
+    } else {
+      sendJSON(res, delivery);
+    }
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    const list = await runCli(
+      [...api, "webhook-deliveries", "list", "weh_1", "--status", "failed", "--limit", "25"],
+      { configHome },
+    );
+    assert.deepEqual(JSON.parse(list.stdout), {
+      data: [delivery],
+      has_more: true,
+      next_cursor: "c2",
+    });
+
+    const all = await runCli([...api, "webhook-deliveries", "list", "weh_1", "--all"], {
+      configHome,
+    });
+    assert.deepEqual(
+      JSON.parse(all.stdout).data.map((row) => row.id),
+      ["whd_1", "whd_2"],
+    );
+
+    const get = await runCli([...api, "webhook-deliveries", "get", "whd_1"], { configHome });
+    assert.equal(get.stdout, `${JSON.stringify(delivery)}\n`);
+
+    const retry = await runCli([...api, "webhook-deliveries", "retry", "whd_1"], { configHome });
+    assert.equal(retry.stdout, '{"delivery_id":"whd_1","status":"queued"}\n');
+
+    const retryFailed = await runCli([...api, "webhook-endpoints", "retry-failed", "weh_1"], {
+      configHome,
+    });
+    assert.equal(retryFailed.stdout, '{"status":"queued","count":2}\n');
+
+    assert.deepEqual(requests, [
+      {
+        method: "GET",
+        url: "/api/webhook_endpoints/weh_1/deliveries?status=failed&limit=25",
+        body: "",
+      },
+      { method: "GET", url: "/api/webhook_endpoints/weh_1/deliveries?limit=100", body: "" },
+      {
+        method: "GET",
+        url: "/api/webhook_endpoints/weh_1/deliveries?limit=100&cursor=c2",
+        body: "",
+      },
+      { method: "GET", url: "/api/webhook_deliveries/whd_1", body: "" },
+      { method: "POST", url: "/api/webhook_deliveries/whd_1/retry", body: "" },
+      { method: "POST", url: "/api/webhook_endpoints/weh_1/retry_failed", body: "" },
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("webhook delivery retry prints a 422 refusal and the commands name a missing id", async () => {
+  const configHome = await tempConfigHome();
+  const refusal = {
+    error: { type: "state_error", message: "Delivery already succeeded", param: null },
+  };
+  const server = await createServer((_req, res) => sendJSON(res, refusal, 422));
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    const refused = await runCli([...api, "webhook-deliveries", "retry", "whd_1"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(refused.code, 1);
+    assert.equal(refused.stdout, "");
+    assert.deepEqual(JSON.parse(refused.stderr), { ...refusal, status: 422 });
+
+    const noEndpoint = await runCli([...api, "webhook-deliveries", "list"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(noEndpoint.code, 1);
+    assert.equal(noEndpoint.stderr, "Missing webhook endpoint id.\n");
+
+    const noDelivery = await runCli([...api, "webhook-deliveries", "get"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(noDelivery.stderr, "Missing webhook delivery id.\n");
+
+    const usage = await runCli([...api, "webhook-deliveries", "resend", "whd_1"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(usage.stderr, "Usage: manza webhook-deliveries list|get|retry\n");
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("webhook-deliveries help lists its commands", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const help = await runCli(["webhook-deliveries", "--help"], { configHome });
+    assert.match(help.stdout, /Manza CLI - webhook-deliveries/);
+    assert.match(
+      help.stdout,
+      /manza webhook-deliveries list <endpoint-id> \[--status failed\|pending\|succeeded\]/,
+    );
+    assert.match(help.stdout, /manza webhook-deliveries retry <id>/);
+
+    const endpoints = await runCli(["webhook-endpoints", "--help"], { configHome });
+    assert.match(endpoints.stdout, /manza webhook-endpoints retry-failed <id>/);
+
+    const top = await runCli(["--help"], { configHome });
+    assert.match(top.stdout, /manza webhook-deliveries get <id>/);
+    assert.match(top.stdout, /manza webhook-endpoints retry-failed <id>/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
 test("checkout session commands map to the API endpoints", async () => {
   const configHome = await tempConfigHome();
   const requests = [];
@@ -1568,6 +1707,575 @@ test("transfer-authorizer and webhooks help list their commands", async () => {
   }
 });
 
+const LISTEN_SECRET = "whsec_listen_test";
+// Odd on purpose: key order, double spaces and a nested array must reach
+// the local server byte-for-byte.
+const LISTEN_BODY_1 = '{"type":"transfer.executed",  "id":"evt_1","data":{"z":1, "a":[2,1]}}';
+const LISTEN_BODY_2 = '{"type":"payment_link.paid","id":"evt_2" ,"data":{}}';
+const LISTEN_FRAME_1 = {
+  id: "whd_1",
+  event_type: "transfer.executed",
+  event_id: "evt_1",
+  body: LISTEN_BODY_1,
+};
+const LISTEN_FRAME_2 = {
+  id: "whd_2",
+  event_type: "payment_link.paid",
+  event_id: "evt_2",
+  body: LISTEN_BODY_2,
+};
+
+test("listen forwards each frame byte-for-byte, signed with the listen secret", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture();
+  const api = await createListenApi(({ res }) => {
+    sseOpen(res);
+    sseWebhook(res, "1-0", LISTEN_FRAME_1);
+    sseWebhook(res, "2-0", LISTEN_FRAME_2);
+  });
+  const hook = `${capture.baseURL}/hooks`;
+  const run = startCli(
+    [
+      ...listenApi(api),
+      "listen",
+      "--forward-to",
+      hook,
+      "--events",
+      "transfer.executed,payment_link.paid",
+    ],
+    { configHome },
+  );
+
+  try {
+    await waitFor(
+      () => (run.out.stderr.match(/<-- \[200\]/g) || []).length === 2,
+      "two forwarded events logged",
+    );
+    run.child.kill("SIGINT");
+    const result = await run.exited;
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout, "");
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url, r.body]),
+      [
+        [
+          "POST",
+          "/api/webhook_listeners",
+          '{"events":["transfer.executed","payment_link.paid"],"authorizer":false}',
+        ],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1", ""],
+        ["DELETE", "/api/webhook_listeners/wl_1", ""],
+      ],
+    );
+
+    const [first, second] = capture.hits;
+    assert.equal(first.method, "POST");
+    assert.equal(first.url, "/hooks");
+    assert.equal(first.body, LISTEN_BODY_1);
+    assert.equal(second.body, LISTEN_BODY_2);
+    assert.equal(first.headers["content-type"], "application/json");
+    for (const prefix of ["x-manza", "x-zazu"]) {
+      assert.equal(first.headers[`${prefix}-event`], "transfer.executed");
+      assert.equal(first.headers[`${prefix}-event-id`], "evt_1");
+      assert.equal(first.headers[`${prefix}-delivery-id`], "whd_1");
+      assert.match(first.headers[`${prefix}-signature`], /^[0-9a-f]{64}$/);
+      assert.match(first.headers[`${prefix}-timestamp`], /^\d+$/);
+    }
+    assert.equal(second.headers["x-manza-delivery-id"], "whd_2");
+
+    // Signed at forward time: verifies within the 5-minute tolerance.
+    const bodyFile = path.join(configHome, "forwarded.json");
+    await writeFile(bodyFile, first.body, "utf8");
+    const verify = await runCli(
+      [
+        "webhooks",
+        "verify",
+        "--secret-env",
+        "LISTEN_SECRET",
+        "--timestamp",
+        first.headers["x-manza-timestamp"],
+        "--signature",
+        first.headers["x-manza-signature"],
+        "--file",
+        bodyFile,
+      ],
+      { configHome, env: { LISTEN_SECRET } },
+    );
+    assert.equal(verify.stdout, "valid\n");
+
+    assert.match(
+      result.stderr,
+      /^Ready! Listening for transfer\.executed, payment_link\.paid\. Your listen signing secret is whsec_listen_test \(\^C to quit\)\n/,
+    );
+    assert.doesNotMatch(result.stderr, /first answer wins/);
+    const lines = result.stderr.trimEnd().split("\n").slice(1);
+    const stamp = String.raw`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`;
+    const url = hook.replace(/[.]/g, "\\.");
+    assert.equal(lines.length, 4);
+    assert.match(lines[0], new RegExp(`^${stamp}  --> transfer\\.executed \\[evt_1\\]$`));
+    assert.match(lines[1], new RegExp(`^${stamp}  <-- \\[200\\] POST ${url} \\(\\d+ ms\\)$`));
+    assert.match(lines[2], new RegExp(`^${stamp}  --> payment_link\\.paid \\[evt_2\\]$`));
+    assert.match(lines[3], new RegExp(`^${stamp}  <-- \\[200\\] POST ${url} \\(\\d+ ms\\)$`));
+  } finally {
+    run.child.kill("SIGKILL");
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen --authorizer warns, --format json prints a line per event, a 500 keeps listening", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture((hit) => (hit === 1 ? 500 : 204));
+  const api = await createListenApi(({ res }) => {
+    sseOpen(res);
+    sseWebhook(res, "1-0", LISTEN_FRAME_1);
+    sseWebhook(res, "2-0", LISTEN_FRAME_2);
+    sseClosed(res);
+  });
+  const hook = `${capture.baseURL}/hooks`;
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "--format", "json", "listen", "--authorizer", "--forward-to", hook],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url, r.body]),
+      [
+        ["POST", "/api/webhook_listeners", '{"events":[],"authorizer":true}'],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1", ""],
+      ],
+    );
+    assert.equal(capture.hits.length, 2);
+
+    const out = result.stdout.trimEnd().split("\n");
+    assert.equal(out.length, 2);
+    assert.match(
+      out[0],
+      /^\{"event_id":"evt_1","event_type":"transfer\.executed","status":500,"duration_ms":\d+\}$/,
+    );
+    assert.match(
+      out[1],
+      /^\{"event_id":"evt_2","event_type":"payment_link\.paid","status":204,"duration_ms":\d+\}$/,
+    );
+
+    assert.match(
+      result.stderr,
+      /^Ready! Listening for all events and transfer challenges\. Your listen signing secret is whsec_listen_test \(\^C to quit\)\n/,
+    );
+    assert.match(
+      result.stderr,
+      /Challenges also go to your registered authorizer; the first answer wins\. Five bad signatures suspend the authorizer for everyone using it\.\n/,
+    );
+    assert.match(result.stderr, / {2}<-- \[500\] POST /);
+    assert.match(result.stderr, / {2}<-- \[204\] POST /);
+    assert.match(
+      result.stderr,
+      /Listener closed by the server: the API key was revoked or the session was closed elsewhere\.\n$/,
+    );
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen prints [ERR] when the local server refuses and keeps listening until SIGTERM", async () => {
+  const configHome = await tempConfigHome();
+  const closed = await createServer(() => {});
+  const refused = `${closed.baseURL}/hooks`;
+  await closed.close();
+  const api = await createListenApi(({ res }) => {
+    sseOpen(res);
+    sseWebhook(res, "1-0", LISTEN_FRAME_1);
+    sseWebhook(res, "2-0", LISTEN_FRAME_2);
+  });
+  const run = startCli([...listenApi(api), "--json", "listen", "--forward-to", refused], {
+    configHome,
+  });
+
+  try {
+    await waitFor(() => (run.out.stderr.match(/\[ERR\]/g) || []).length === 2, "two [ERR] lines");
+    run.child.kill("SIGTERM");
+    const result = await run.exited;
+
+    assert.equal(result.code, 0);
+    assert.match(result.stderr, / {2}<-- \[ERR\] .*refused/);
+    assert.deepEqual(api.requests.at(-1), {
+      method: "DELETE",
+      url: "/api/webhook_listeners/wl_1",
+      body: "",
+      lastEventId: null,
+    });
+    const out = result.stdout.trimEnd().split("\n");
+    assert.equal(out.length, 2);
+    const line = JSON.parse(out[0]);
+    assert.deepEqual(Object.keys(line), [
+      "event_id",
+      "event_type",
+      "status",
+      "duration_ms",
+      "error",
+    ]);
+    assert.equal(line.status, null);
+    assert.match(line.error, /refused/);
+  } finally {
+    run.child.kill("SIGKILL");
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen renews an expired session and resumes forwarding", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture();
+  const api = await createListenApi(({ name, connection, res }) => {
+    if (name === "wl_1" && connection === 1) {
+      sseOpen(res);
+      sseWebhook(res, "1-0", LISTEN_FRAME_1);
+      res.end();
+    } else if (name === "wl_1") {
+      sendJSON(res, { error: { type: "not_found_error", message: "Listener not found" } }, 404);
+    } else {
+      sseOpen(res);
+      sseWebhook(res, "1-0", LISTEN_FRAME_2);
+      sseClosed(res);
+    }
+  });
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", `${capture.baseURL}/hooks`],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url, r.lastEventId]),
+      [
+        ["POST", "/api/webhook_listeners", null],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1", null],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1", "1-0"],
+        ["POST", "/api/webhook_listeners", null],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2", null],
+      ],
+    );
+    assert.deepEqual(
+      capture.hits.map((hit) => hit.body),
+      [LISTEN_BODY_1, LISTEN_BODY_2],
+    );
+    assert.equal((result.stderr.match(/Session renewed\n/g) || []).length, 1);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen does not follow a redirect from the local server", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture(() => 302);
+  const api = await createListenApi(({ res }) => {
+    sseOpen(res);
+    sseWebhook(res, "1-0", LISTEN_FRAME_1);
+    sseClosed(res);
+  });
+
+  try {
+    const hook = `${capture.baseURL.replace("http://", "http://dev:hunter2@")}/hooks`;
+    const result = await startCli([...listenApi(api), "listen", "--forward-to", hook], {
+      configHome,
+    }).exited;
+
+    assert.equal(result.code, 1);
+    assert.equal(capture.hits.length, 1);
+    assert.match(result.stderr, / {2}<-- \[302\] POST http:\/\/dev:xxxxx@/);
+    assert.doesNotMatch(result.stderr, /hunter2/);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen renews a session when it reaches expires_at, timed by the server's clock", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture();
+  // The server's clock is years behind this machine's: the session lasts
+  // expires_at minus the response's Date, not until the local clock reads
+  // expires_at (already past here).
+  const date = "Wed, 01 Jan 2020 00:00:00 GMT";
+  const soon = "2020-01-01T00:00:02Z";
+  const api = await createListenApi(
+    ({ name, res }) => {
+      sseOpen(res);
+      if (name === "wl_1") {
+        sseWebhook(res, "1-0", LISTEN_FRAME_1);
+      } else {
+        sseWebhook(res, "1-0", LISTEN_FRAME_2);
+        sseClosed(res);
+      }
+    },
+    { date, expiresAt: (session) => (session === 1 ? soon : "2020-01-02T00:00:00Z") },
+  );
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", `${capture.baseURL}/hooks`],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2"],
+      ],
+    );
+    assert.deepEqual(
+      capture.hits.map((hit) => hit.body),
+      [LISTEN_BODY_1, LISTEN_BODY_2],
+    );
+    assert.equal((result.stderr.match(/Session renewed\n/g) || []).length, 1);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen does not renew a session whose expires_at is already past", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture();
+  const api = await createListenApi(
+    ({ res }) => {
+      sseOpen(res);
+      setTimeout(() => {
+        sseWebhook(res, "1-0", LISTEN_FRAME_1);
+        sseClosed(res);
+      }, 300);
+    },
+    { expiresAt: () => "2001-01-01T00:00:00Z" },
+  );
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", `${capture.baseURL}/hooks`],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+      ],
+    );
+    assert.equal(capture.hits.length, 1);
+    assert.doesNotMatch(result.stderr, /Session renewed/);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen stops renewing when a renewed session is not found again with nothing forwarded", async () => {
+  const configHome = await tempConfigHome();
+  const notFound = { error: { type: "not_found_error", message: "Listener not found" } };
+  const api = await createListenApi(({ connection, res }) => {
+    if (connection === 1) {
+      sseOpen(res);
+      res.end();
+    } else {
+      sendJSON(res, notFound, 404);
+    }
+  });
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", "http://127.0.0.1:1/hooks"],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2"],
+      ],
+    );
+    assert.equal((result.stderr.match(/Session renewed\n/g) || []).length, 1);
+    assert.deepEqual(JSON.parse(result.stderr.trimEnd().split("\n").at(-1)), {
+      ...notFound,
+      status: 404,
+    });
+  } finally {
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen hides the stream token when the stream connection fails", async () => {
+  const configHome = await tempConfigHome();
+  const api = await createListenApi(({ res }) => {
+    res.socket.destroy();
+  });
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", "http://127.0.0.1:1/hooks"],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Connection failed: .*\/api\/webhook_listeners\/stream\?…/);
+    assert.doesNotMatch(result.stderr, /name=wl_1/);
+    assert.deepEqual(api.requests.at(-1), {
+      method: "DELETE",
+      url: "/api/webhook_listeners/wl_1",
+      body: "",
+      lastEventId: null,
+    });
+  } finally {
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen --print-secret prints only the secret and closes the session", async () => {
+  const configHome = await tempConfigHome();
+  const api = await createListenApi(() => {
+    throw new Error("--print-secret must not open the stream");
+  });
+
+  try {
+    const result = await runCli([...listenApi(api), "listen", "--print-secret"], { configHome });
+
+    assert.equal(result.stdout, `${LISTEN_SECRET}\n`);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["DELETE", "/api/webhook_listeners/wl_1"],
+      ],
+    );
+  } finally {
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen requires --forward-to and explains a 403 on --authorizer", async () => {
+  const configHome = await tempConfigHome();
+  const forbidden = {
+    error: { type: "permission_error", message: "API key lacks the transfers:authorize scope" },
+  };
+  const api = await createListenApi(() => {}, { createStatus: 403, createBody: forbidden });
+
+  try {
+    const usage = await runCli([...listenApi(api), "listen"], { configHome, reject: false });
+    assert.equal(usage.code, 1);
+    assert.equal(usage.stdout, "");
+    assert.equal(usage.stderr, "Missing forward URL. Use --forward-to <url>.\n");
+
+    for (const bad of ["localhost:4242/hooks", "not a url", "ftp://127.0.0.1/hooks"]) {
+      const invalid = await runCli([...listenApi(api), "listen", "--forward-to", bad], {
+        configHome,
+        reject: false,
+      });
+      assert.equal(invalid.code, 1);
+      assert.equal(
+        invalid.stderr,
+        `Invalid --forward-to "${bad}". Use an http:// or https:// URL, such as http://localhost:4242/webhooks.\n`,
+      );
+    }
+    const twice = await runCli(
+      [
+        ...listenApi(api),
+        "listen",
+        "--forward-to",
+        "http://127.0.0.1:1/a",
+        "--forward-to",
+        "http://127.0.0.1:1/b",
+      ],
+      { configHome, reject: false },
+    );
+    assert.equal(twice.code, 1);
+    assert.equal(twice.stderr, "Pass --forward-to once: listen forwards to one URL.\n");
+
+    for (const args of [
+      ["--authorizer=false", "--forward-to", "http://127.0.0.1:1/a"],
+      ["--authorizer", "false", "--forward-to", "http://127.0.0.1:1/a"],
+      ["--print-secret=true"],
+    ]) {
+      const valued = await runCli([...listenApi(api), "listen", ...args], {
+        configHome,
+        reject: false,
+      });
+      assert.equal(valued.code, 1);
+      assert.match(
+        valued.stderr,
+        /^(--authorizer and --print-secret take no value|Unexpected argument "false")/,
+      );
+    }
+    assert.deepEqual(api.requests, []);
+
+    const denied = await runCli(
+      [...listenApi(api), "listen", "--authorizer", "--forward-to", "http://127.0.0.1:1/hooks"],
+      { configHome, reject: false },
+    );
+    assert.equal(denied.code, 1);
+    assert.equal(denied.stdout, "");
+    const [errorLine, hint] = denied.stderr.trimEnd().split("\n");
+    assert.deepEqual(JSON.parse(errorLine), { ...forbidden, status: 403 });
+    assert.equal(
+      hint,
+      "--authorizer needs an API key with the transfers:authorize scope and an IP allowlist.",
+    );
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [["POST", "/api/webhook_listeners"]],
+    );
+  } finally {
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen help lists the command", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const listen = await runCli(["listen", "--help"], { configHome });
+    assert.match(listen.stdout, /Manza CLI - listen/);
+    assert.match(
+      listen.stdout,
+      /manza listen --forward-to <url> \[--events type,type\] \[--authorizer\]/,
+    );
+    assert.match(listen.stdout, /manza listen --print-secret/);
+
+    const top = await runCli(["--help"], { configHome });
+    assert.match(top.stdout, /manza listen --forward-to <url>/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
 test("a duplicate client reference prints the existing payment_id", async () => {
   const configHome = await tempConfigHome();
   const server = await createServer((_req, res) => {
@@ -2021,6 +2729,125 @@ test("help says Manza CLI and documents the MANZA_* env vars", async () => {
     await rm(configHome, { recursive: true, force: true });
   }
 });
+
+// startCli spawns a long-running command (manza listen): the test signals
+// it and awaits `exited`, or lets it end by itself.
+function startCli(args, { configHome, env: extraEnv = {} } = {}) {
+  const env = { ...process.env, XDG_CONFIG_HOME: configHome, ...BLANK_ENV, ...extraEnv };
+  const child = spawn(cli, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  const out = { stdout: "", stderr: "" };
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    out.stdout += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    out.stderr += chunk;
+  });
+  const exited = new Promise((resolve) => {
+    child.on("close", (code) => resolve({ code, ...out }));
+  });
+  return { child, out, exited };
+}
+
+async function waitFor(condition, label, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+function listenApi(api) {
+  return ["--api-key", "sk_live_test", "--base-url", api.baseURL];
+}
+
+// createListenApi mocks POST/DELETE /api/webhook_listeners and hands each
+// stream connection to onStream({ name, connection, res }); connection
+// counts that session's connects from 1.
+async function createListenApi(
+  onStream,
+  { createStatus = 201, createBody, expiresAt = () => "2099-01-01T00:00:00Z", date } = {},
+) {
+  const requests = [];
+  const streams = [];
+  let sessions = 0;
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    requests.push({
+      method: req.method,
+      url: req.url,
+      body,
+      lastEventId: req.headers["last-event-id"] ?? null,
+    });
+    if (req.method === "POST" && req.url === "/api/webhook_listeners") {
+      if (createStatus !== 201) {
+        sendJSON(res, createBody, createStatus);
+        return;
+      }
+      sessions += 1;
+      const params = JSON.parse(body);
+      if (date) res.setHeader("Date", date);
+      sendJSON(
+        res,
+        {
+          id: `wl_${sessions}`,
+          events: params.events,
+          authorizer: params.authorizer,
+          expires_at: expiresAt(sessions),
+          stream_url: `/api/webhook_listeners/stream?name=wl_${sessions}`,
+          signing_secret: LISTEN_SECRET,
+        },
+        201,
+      );
+      return;
+    }
+    if (req.method === "DELETE") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    const name = new URL(req.url, "http://localhost").searchParams.get("name");
+    const connection = requests.filter((r) => r.method === "GET" && r.url === req.url).length;
+    streams.push(res);
+    onStream({ name, connection, res });
+  });
+
+  return {
+    baseURL: server.baseURL,
+    requests,
+    close: async () => {
+      for (const res of streams) res.end();
+      await server.close();
+    },
+  };
+}
+
+// createCapture is the developer's local server: it records each request
+// and answers status(hitNumber).
+async function createCapture(status = () => 200) {
+  const hits = [];
+  const server = await createServer(async (req, res) => {
+    const body = await readRequestBody(req);
+    hits.push({ method: req.method, url: req.url, headers: req.headers, body });
+    res.writeHead(status(hits.length));
+    res.end();
+  });
+  return { ...server, hits };
+}
+
+function sseOpen(res) {
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+  res.write(": connected\n\n");
+}
+
+function sseWebhook(res, streamId, frame) {
+  res.write(`id: ${streamId}\nevent: webhook\ndata: ${JSON.stringify(frame)}\n\n`);
+}
+
+function sseClosed(res) {
+  res.write("event: listener_closed\ndata: {}\n\n");
+}
 
 async function runCli(args, { configHome, reject = true, env: extraEnv = {}, script = cli } = {}) {
   const env = {

@@ -12,7 +12,7 @@ var globalFlags = setOf(
 )
 
 var booleanFlags = setOf(
-	"all", "api-key-stdin", "debug", "help", "json", "pretty", "quiet", "version", "stdin", "no-tolerance",
+	"all", "api-key-stdin", "debug", "help", "json", "pretty", "quiet", "version", "stdin", "no-tolerance", "authorizer", "print-secret",
 )
 
 // flags maps a flag name to every value it was given, in order. A value is

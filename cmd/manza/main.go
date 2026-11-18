@@ -83,6 +83,10 @@ func run(argv []string) error {
 		return err
 	}
 
+	if parsed.positionals[0] == "listen" {
+		return listen(parsed.positionals[1:], parsed.flags, config, explicitJSON(parsed.globals))
+	}
+
 	if oneOf(parsed.positionals[0], "transfers", "transfer-drafts", "transfer_drafts") && at(parsed.positionals, 1) == "sign" {
 		return signTransferAuthorization(parsed.flags, config)
 	}

@@ -286,6 +286,29 @@ manza webhooks verify --secret-env WEBHOOK_SECRET --timestamp 1767225600 \
 
 It prints `valid` and exits 0, or prints the reason (`invalid webhook signature`, `webhook timestamp outside tolerance`, …) on stderr and exits 1. Without `--file` it reads the body from stdin. `--secret-env` names the environment variable holding the endpoint's signing secret; `--secret <secret>` also works but shows in `ps` and your shell history. A delivery older than 5 minutes fails the timestamp check unless you pass `--no-tolerance`; never skip that check in a live receiver.
 
+## Forwarding webhooks to localhost
+
+`manza listen` opens a listen session and forwards every subscribed webhook to a server on your machine, the way `stripe listen` does. Your registered endpoints keep receiving everything too.
+
+```bash
+manza listen --forward-to http://localhost:4242/webhooks
+manza listen --forward-to http://localhost:4242/webhooks --events transfer.executed,payment_link.paid
+manza listen --forward-to http://localhost:4242/webhooks --authorizer
+```
+
+```text
+Ready! Listening for all events. Your listen signing secret is whsec_… (^C to quit)
+2026-11-18 16:44:33  --> transfer.executed [0199a1b2-0000-7000-8000-000000000010]
+2026-11-18 16:44:33  <-- [200] POST http://localhost:4242/webhooks (12 ms)
+```
+
+- Each request carries the body byte for byte, signed like a real delivery (`X-Manza-Signature`, `X-Manza-Timestamp`, `X-Manza-Event`, `X-Manza-Event-Id`, `X-Manza-Delivery-Id`, and the same under `X-Zazu-*`) but with your API key's **listen signing secret**, not an endpoint's secret. Verify with it as you would in production. It is signed when forwarded, so an event replayed after a reconnect still passes the 5-minute timestamp check.
+- `manza listen --print-secret` prints only that secret and exits, for `.env` files: `echo "WEBHOOK_SECRET=$(manza listen --print-secret)" >> .env`. It is the same for every session of the key.
+- The key needs `webhook_listeners:write`. `--authorizer` also forwards transfer-authorization challenges and needs `transfers:authorize` and an IP allowlist. The challenge still goes to your registered authorizer: the first answer wins, and five bad signatures from any answerer suspend the authorizer for everyone using it.
+- A failed POST prints `<-- [500]` or `<-- [ERR] <reason>` and is not retried. Requests time out after 10 s, and redirects are not followed.
+- Log lines go to stderr. `--format json` prints one line per forwarded event on stdout: `{"event_id","event_type","status","duration_ms"}`, with a numeric `status` for any HTTP response (5xx included) and `status: null` plus an `error` when no response came back (connection refused, timeout).
+- ^C closes the session. Sessions last 12 hours; at expiry the CLI opens a new one (`Session renewed`), and an event emitted between the two is not forwarded. Revoking the key or closing the session elsewhere ends the command with exit 1.
+
 ## Commands
 
 ```text
@@ -335,8 +358,16 @@ manza webhook-endpoints test <id>
 manza webhook-endpoints regenerate-secret <id>
 manza webhook-endpoints enable <id>
 manza webhook-endpoints disable <id>
+manza webhook-endpoints retry-failed <id>
+
+manza webhook-deliveries list <endpoint-id> [--status failed|pending|succeeded] [--limit n] [--cursor value] [--all|--max-items n]
+manza webhook-deliveries get <id>
+manza webhook-deliveries retry <id>
 
 manza webhooks verify (--secret-env <VAR>|--secret <secret>) --timestamp <t> --signature <hex> [--file path] [--no-tolerance]
+
+manza listen --forward-to <url> [--events type,type] [--authorizer]
+manza listen --print-secret
 
 manza checkout-sessions create [--data json|--file path|--stdin] [--account-id id] [--amount amount] [--currency-code value] [--success-url url] [--cancel-url url] [--description text] [--customer-email email] [--metadata json]
 manza checkout-sessions get <id>

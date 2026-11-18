@@ -24,11 +24,13 @@ Command-line interface for the Manza API (renamed from zazu in 1.0; the zazu nam
 | `manza customers list/get/create/update/delete` | Customer CRUD |
 | `manza invoices list/get/create/update/send/mark-as-paid/cancel/credit-note/delete` | Invoice ops; create/update take `--account-id` and `--generate-payment-link` (`payment-link` was removed in 2.0) |
 | `manza payment-links list/get/create/cancel` | Payment-link ops |
-| `manza webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable` | Webhook config |
+| `manza webhook-endpoints list/get/create/update/delete/test/regenerate-secret/enable/disable/retry-failed` | Webhook config; `retry-failed` queues every failed delivery again |
+| `manza webhook-deliveries list <endpoint-id>` / `get <id>` / `retry <id>` | An endpoint's deliveries; `retry` queues one again |
 | `manza checkout-sessions create/get` | Hosted checkout sessions |
 | `manza transfers create/get/authorize/decline/sign` | Payments (`/api/payments`); `create` and `sign` take `--transfer-method`; `get` adds an `Approval:` line on stderr; `sign` computes the v2 authorization signature locally from `--secret-env` |
 | `manza transfer-authorizer get` | The enrolled transfer authorizer; a status/limits/new-payee/usage/secret-expiry summary on stderr |
 | `manza webhooks verify` | Checks a captured webhook delivery locally (secret from `--secret-env` or `--secret`) (`manza.ConstructWebhookEvent`); prints `valid` or the reason |
+| `manza listen --forward-to <url> [--events …] [--authorizer]`, `listen --print-secret` | Forwards a listen session's webhooks (and with `--authorizer` transfer challenges) to a local server, body byte for byte, signed at forward time with the key's listen secret; log on stderr, `--format json` lines on stdout; ^C deletes the session |
 | `manza beneficiaries list/get/create`, `beneficiaries accounts list/create <beneficiary-id>`, `beneficiaries accounts get <beneficiary-id> <account-id>` | Saved recipients + their external bank accounts |
 | `manza payee-trust-requests create/get` | Ask to trust payees for machine-authorized transfers |
 | `manza request <method> <path>` | Escape hatch for raw API calls |
@@ -37,14 +39,14 @@ Global flags: `--api-key`, `--api-key-stdin`, `--base-url`, `--api-version`, `--
 
 ## How to work in this codebase
 
-1. **The CLI is a thin wrapper.** HTTP, auth headers and error classification are in `manza-go`; every request goes through `Client.Request` or a typed SDK method. The CLI's job is argv parsing, output formatting, token storage, and login/config commands.
+1. **The CLI is a thin wrapper.** HTTP, auth headers and error classification are in `manza-go`; every API request goes through `Client.Request` or a typed SDK method (the only `net/http` call of the CLI's own is `manza listen` forwarding to the developer's local server; see Critical rules). The CLI's job is argv parsing, output formatting, token storage, and login/config commands.
 2. **Output is byte-compatible with 1.0.** The CLI was TypeScript until 1.1, and scripts parse its output. `cmd/manza/jsjson.go` keeps JavaScript's JSON semantics: key insertion order, `JSON.stringify` number and string formatting. Query strings keep flag order. Don't swap in `encoding/json` maps for output or request bodies (they sort keys), and don't use `url.Values.Encode` (it sorts too).
 3. **Tests are integration-style.** `test/cli.test.js` spawns the compiled binary (`MANZA_CLI_BIN`, default `dist/manza`) against a local mock API and asserts stdout/stderr/exit codes and exact request bodies. That suite is the contract; `go test` covers only internals like `jsjson.go`.
 4. **Lint must be green.** `bun run lint` runs Biome with `--error-on-warnings`, `go vet` and `gofmt`. Don't add `// biome-ignore` or `//nolint` to silence — fix the issue.
 
 ## Critical rules
 
-- **Use the SDK.** Don't hand-roll `net/http` calls. Don't parse error strings for status codes — use `errors.As` to `*manza.Error` and its `Kind`. The `recorder` transport in `send.go` only observes responses (headers, body in key order) that the SDK doesn't expose.
+- **Use the SDK.** Don't hand-roll `net/http` calls. The one exception is `manza listen` forwarding to the developer's local server (`listen.go`), which is not the Manza API; its session, stream and delete calls still go through the SDK. Don't parse error strings for status codes — use `errors.As` to `*manza.Error` and its `Kind`. The `recorder` transport in `send.go` only observes responses (headers, body in key order) that the SDK doesn't expose.
 - **Reuse the CLI's helpers.** Lists go through `listRequest` (which enables `paginate` only for `--all` or `--max-items`; `sendPaginated` walks the cursors), never a new cursor loop per command; output goes through `printError` / `printOutput`, never hand-rolled stdout/stderr JSON; a SDK error keeps its `*manza.Error` and `Kind`, never re-wrapped in a generic message. A test is a case in `test/cli.test.js`; `go test` is for internals.
 - **`bun run check:all` before every commit.** Runs lint (Biome, `go vet`, `gofmt`) + test (`go test`, compile, CLI suite). CI runs the same commands.
 - **No long-lived `NPM_TOKEN`.** Releases publish via npm OIDC trusted publishing through the `release` GitHub environment. Each of the **five** published packages — `@getmanza/cli`, `@getmanza/cli-darwin-arm64`, `@getmanza/cli-darwin-x64`, `@getmanza/cli-linux-arm64`, `@getmanza/cli-linux-x64` — needs its own trusted-publisher binding at `https://www.npmjs.com/package/<name>/access`, set up and verified before the first 1.0 release (the `@getzazu/*` bindings don't carry over). All five point at this repo's `release.yml` workflow + `release` environment. Adding a new platform target means adding a fifth, sixth, etc. binding before its first publish.
