@@ -1,0 +1,22 @@
+test/cli.test.js
+  s_4177b74cfa9282::t_f8e6357e75e264 1976-2086,2150-2161,2694-2697,2722
+  s_4177b74cfa9282::t_42727b8f97b2c1 2087-2113
+cmd/manza/listen.go
+  s_4177b74cfa9282::t_19b8c7cf5cbc4b 13,42,51-53,114,117-120,126-133,138-140,142-145,150-154,156-158,163-181,183-187,191-193,217-218,220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0c8068d887fb4fdad0cc5b52d089032b7d0cde92",
+  "prompts": {},
+  "sessions": {
+    "s_4177b74cfa9282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4ff69733-fed2-42ac-aa43-d493e9328b3f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}

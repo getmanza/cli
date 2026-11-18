@@ -1,0 +1,21 @@
+AGENTS.md
+  s_4177b74cfa9282::t_93514324aa5120 27-28,33,49
+README.md
+  s_4177b74cfa9282::t_93514324aa5120 289-311,361-365,369-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f8523882aee1ea8cf10b58844a29b1eafcc8113b",
+  "prompts": {},
+  "sessions": {
+    "s_4177b74cfa9282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4ff69733-fed2-42ac-aa43-d493e9328b3f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
