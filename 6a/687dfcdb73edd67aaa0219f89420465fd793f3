@@ -1,0 +1,23 @@
+cmd/manza/help.go
+  s_4177b74cfa9282::t_d7e9281bc5397c 6,27-28
+test/cli.test.js
+  s_4177b74cfa9282::t_06626d8647a61e 815-953
+cmd/manza/requests.go
+  s_4177b74cfa9282::t_d7e9281bc5397c 72-73,389,404,425-442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6a687dfcdb73edd67aaa0219f89420465fd793f3",
+  "prompts": {},
+  "sessions": {
+    "s_4177b74cfa9282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4ff69733-fed2-42ac-aa43-d493e9328b3f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
