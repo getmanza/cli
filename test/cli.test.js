@@ -812,6 +812,145 @@ test("webhook endpoints list supports pagination", async () => {
   }
 });
 
+test("webhook delivery commands map to the API endpoints", async () => {
+  const configHome = await tempConfigHome();
+  const requests = [];
+  const delivery = { id: "whd_1", endpoint_id: "weh_1", status: "failed", attempts: 3 };
+  const server = await createServer(async (req, res) => {
+    requests.push({ method: req.method, url: req.url, body: await readRequestBody(req) });
+    if (req.url.startsWith("/api/webhook_endpoints/weh_1/deliveries")) {
+      const second = req.url.includes("cursor=c2");
+      sendJSON(res, {
+        data: [{ ...delivery, id: second ? "whd_2" : "whd_1" }],
+        has_more: !second,
+        next_cursor: second ? null : "c2",
+      });
+    } else if (req.url === "/api/webhook_deliveries/whd_1/retry") {
+      sendJSON(res, { delivery_id: "whd_1", status: "queued" }, 202);
+    } else if (req.url === "/api/webhook_endpoints/weh_1/retry_failed") {
+      sendJSON(res, { status: "queued", count: 2 }, 202);
+    } else {
+      sendJSON(res, delivery);
+    }
+  });
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    const list = await runCli(
+      [...api, "webhook-deliveries", "list", "weh_1", "--status", "failed", "--limit", "25"],
+      { configHome },
+    );
+    assert.deepEqual(JSON.parse(list.stdout), {
+      data: [delivery],
+      has_more: true,
+      next_cursor: "c2",
+    });
+
+    const all = await runCli([...api, "webhook-deliveries", "list", "weh_1", "--all"], {
+      configHome,
+    });
+    assert.deepEqual(
+      JSON.parse(all.stdout).data.map((row) => row.id),
+      ["whd_1", "whd_2"],
+    );
+
+    const get = await runCli([...api, "webhook-deliveries", "get", "whd_1"], { configHome });
+    assert.equal(get.stdout, `${JSON.stringify(delivery)}\n`);
+
+    const retry = await runCli([...api, "webhook-deliveries", "retry", "whd_1"], { configHome });
+    assert.equal(retry.stdout, '{"delivery_id":"whd_1","status":"queued"}\n');
+
+    const retryFailed = await runCli([...api, "webhook-endpoints", "retry-failed", "weh_1"], {
+      configHome,
+    });
+    assert.equal(retryFailed.stdout, '{"status":"queued","count":2}\n');
+
+    assert.deepEqual(requests, [
+      {
+        method: "GET",
+        url: "/api/webhook_endpoints/weh_1/deliveries?status=failed&limit=25",
+        body: "",
+      },
+      { method: "GET", url: "/api/webhook_endpoints/weh_1/deliveries?limit=100", body: "" },
+      {
+        method: "GET",
+        url: "/api/webhook_endpoints/weh_1/deliveries?limit=100&cursor=c2",
+        body: "",
+      },
+      { method: "GET", url: "/api/webhook_deliveries/whd_1", body: "" },
+      { method: "POST", url: "/api/webhook_deliveries/whd_1/retry", body: "" },
+      { method: "POST", url: "/api/webhook_endpoints/weh_1/retry_failed", body: "" },
+    ]);
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("webhook delivery retry prints a 422 refusal and the commands name a missing id", async () => {
+  const configHome = await tempConfigHome();
+  const refusal = {
+    error: { type: "state_error", message: "Delivery already succeeded", param: null },
+  };
+  const server = await createServer((_req, res) => sendJSON(res, refusal, 422));
+  const api = ["--api-key", "sk_live_test", "--base-url", server.baseURL];
+
+  try {
+    const refused = await runCli([...api, "webhook-deliveries", "retry", "whd_1"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(refused.code, 1);
+    assert.equal(refused.stdout, "");
+    assert.deepEqual(JSON.parse(refused.stderr), { ...refusal, status: 422 });
+
+    const noEndpoint = await runCli([...api, "webhook-deliveries", "list"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(noEndpoint.code, 1);
+    assert.equal(noEndpoint.stderr, "Missing webhook endpoint id.\n");
+
+    const noDelivery = await runCli([...api, "webhook-deliveries", "get"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(noDelivery.stderr, "Missing webhook delivery id.\n");
+
+    const usage = await runCli([...api, "webhook-deliveries", "resend", "whd_1"], {
+      configHome,
+      reject: false,
+    });
+    assert.equal(usage.stderr, "Usage: manza webhook-deliveries list|get|retry\n");
+  } finally {
+    await server.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("webhook-deliveries help lists its commands", async () => {
+  const configHome = await tempConfigHome();
+
+  try {
+    const help = await runCli(["webhook-deliveries", "--help"], { configHome });
+    assert.match(help.stdout, /Manza CLI - webhook-deliveries/);
+    assert.match(
+      help.stdout,
+      /manza webhook-deliveries list <endpoint-id> \[--status failed\|pending\|succeeded\]/,
+    );
+    assert.match(help.stdout, /manza webhook-deliveries retry <id>/);
+
+    const endpoints = await runCli(["webhook-endpoints", "--help"], { configHome });
+    assert.match(endpoints.stdout, /manza webhook-endpoints retry-failed <id>/);
+
+    const top = await runCli(["--help"], { configHome });
+    assert.match(top.stdout, /manza webhook-deliveries get <id>/);
+    assert.match(top.stdout, /manza webhook-endpoints retry-failed <id>/);
+  } finally {
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
 test("checkout session commands map to the API endpoints", async () => {
   const configHome = await tempConfigHome();
   const requests = [];

@@ -69,6 +69,8 @@ func buildRequest(positionals []string, f flags) (*apiRequest, error) {
 		return payeeTrustRequestRequest(command, arg, f)
 	case "webhook-endpoints", "webhook_endpoints":
 		return webhookEndpointRequest(command, arg, f)
+	case "webhook-deliveries", "webhook_deliveries":
+		return webhookDeliveryRequest(command, arg, f)
 	case "checkout-sessions", "checkout_sessions":
 		return checkoutSessionRequest(command, arg, f)
 	case "request":
@@ -384,6 +386,7 @@ func webhookEndpointRequest(command, id string, f flags) (*apiRequest, error) {
 		"test": "test", "enable": "enable", "disable": "disable",
 		"regenerate-secret": "regenerate_secret", "regenerate_secret": "regenerate_secret",
 		"rotate-secret": "regenerate_secret", "rotate_secret": "regenerate_secret",
+		"retry-failed": "retry_failed", "retry_failed": "retry_failed",
 	}
 
 	switch command {
@@ -398,7 +401,7 @@ func webhookEndpointRequest(command, id string, f flags) (*apiRequest, error) {
 	}
 
 	if _, ok := actions[command]; !ok && !oneOf(command, "get", "update", "delete") {
-		return nil, cliErrorf("Usage: manza webhook-endpoints list|get|create|update|delete|test|regenerate-secret|enable|disable")
+		return nil, cliErrorf("Usage: manza webhook-endpoints list|get|create|update|delete|test|regenerate-secret|enable|disable|retry-failed")
 	}
 	if err := requireString(id, "webhook endpoint id"); err != nil {
 		return nil, err
@@ -416,6 +419,27 @@ func webhookEndpointRequest(command, id string, f flags) (*apiRequest, error) {
 		return &apiRequest{method: "PATCH", path: path, body: bodyFromFlags(f, body)}, nil
 	default:
 		return &apiRequest{method: "POST", path: path + "/" + actions[command]}, nil
+	}
+}
+
+func webhookDeliveryRequest(command, id string, f flags) (*apiRequest, error) {
+	switch command {
+	case "list":
+		if err := requireString(id, "webhook endpoint id"); err != nil {
+			return nil, err
+		}
+		return listRequest("/api/webhook_endpoints/"+encodeURIComponent(id)+"/deliveries", pick(f, "status", "cursor", "limit"), f)
+	case "get", "retry":
+		if err := requireString(id, "webhook delivery id"); err != nil {
+			return nil, err
+		}
+		path := "/api/webhook_deliveries/" + encodeURIComponent(id)
+		if command == "retry" {
+			return &apiRequest{method: "POST", path: path + "/retry"}, nil
+		}
+		return get(path), nil
+	default:
+		return nil, cliErrorf("Usage: manza webhook-deliveries list|get|retry")
 	}
 }
 
