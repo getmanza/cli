@@ -40,13 +40,27 @@ type listener struct {
 	jsonLines bool
 	http      *http.Client
 	forwarded int // events forwarded so far
+	// deadline is when the current session expires on this machine's
+	// clock; zero when unknown.
+	deadline time.Time
 }
+
+// minSessionLifetime is the shortest session the CLI times out by itself:
+// a shorter (or past) expires_at is ignored rather than renewed in a loop.
+const minSessionLifetime = time.Second
+
+// notFoundWindow: a renewed session found missing again within it, before
+// it forwarded anything, ends the command instead of renewing again.
+const notFoundWindow = 10 * time.Minute
 
 func listen(f flags, config *runConfig, jsonLines bool) error {
 	printSecret := f.truthy("print-secret")
 	if !printSecret {
 		if err := requireValue(f.value("forward-to"), "forward URL. Use --forward-to <url>"); err != nil {
 			return err
+		}
+		if len(f["forward-to"]) > 1 {
+			return cliErrorf("Pass --forward-to once: listen forwards to one URL.")
 		}
 		if target, err := url.Parse(f.str("forward-to")); err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Host == "" {
 			return cliErrorf("Invalid --forward-to \"%s\". Use an http:// or https:// URL, such as http://localhost:4242/webhooks.", f.str("forward-to"))
@@ -112,9 +126,10 @@ func (l *listener) run(session manza.WebhookListener) error {
 	}
 
 	renewedAt := -1 // l.forwarded when a not-found last renewed the session
+	var renewedTime time.Time
 	for {
 		l.s.recorder.streamed = false
-		streamCtx, cancel := untilExpiry(ctx, session)
+		streamCtx, cancel := l.untilExpiry(ctx)
 		err := l.stream(streamCtx, ctx, session)
 		expired := streamCtx.Err() != nil
 		cancel()
@@ -140,8 +155,9 @@ func (l *listener) run(session manza.WebhookListener) error {
 		// would loop creating sessions.
 		var apiErr *manza.Error
 		notFound := errors.As(err, &apiErr) && apiErr.Kind == manza.KindNotFound
-		if notFound && l.s.recorder.streamed && renewedAt != l.forwarded {
-			renewedAt = l.forwarded
+		looping := renewedAt == l.forwarded && time.Since(renewedTime) < notFoundWindow
+		if notFound && l.s.recorder.streamed && !looping {
+			renewedAt, renewedTime = l.forwarded, time.Now()
 			if session, err = l.renew(); err != nil {
 				return err
 			}
@@ -162,13 +178,32 @@ func (l *listener) run(session manza.WebhookListener) error {
 
 var streamQuery = regexp.MustCompile(`\?[^"\s]*`)
 
-// untilExpiry ends the stream at the session's expires_at, when it parses.
-func untilExpiry(ctx context.Context, session manza.WebhookListener) (context.Context, context.CancelFunc) {
-	expiresAt, err := time.Parse(time.RFC3339, session.ExpiresAt)
-	if err != nil {
+// untilExpiry ends the stream when the session expires, if that is known.
+func (l *listener) untilExpiry(ctx context.Context) (context.Context, context.CancelFunc) {
+	if l.deadline.IsZero() {
 		return context.WithCancel(ctx)
 	}
-	return context.WithDeadline(ctx, expiresAt)
+	return context.WithDeadline(ctx, l.deadline)
+}
+
+// sessionDeadline is expires_at on this machine's clock: the session's
+// lifetime is measured against the server's Date header, so a skewed local
+// clock neither renews early in a loop nor late. Zero when expires_at does
+// not parse or leaves under minSessionLifetime.
+func sessionDeadline(expiresAt, date string, now time.Time) time.Time {
+	expires, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return time.Time{}
+	}
+	serverNow := now
+	if parsed, err := http.ParseTime(date); err == nil {
+		serverNow = parsed
+	}
+	lifetime := expires.Sub(serverNow)
+	if lifetime < minSessionLifetime {
+		return time.Time{}
+	}
+	return now.Add(lifetime)
 }
 
 func (l *listener) renew() (manza.WebhookListener, error) {
@@ -278,6 +313,7 @@ func (l *listener) create() (manza.WebhookListener, error) {
 	if err := resp.Decode(&session); err != nil {
 		return session, cliErrorf("Unexpected webhook listener response: %s", err)
 	}
+	l.deadline = sessionDeadline(session.ExpiresAt, l.s.recorder.header.Get("Date"), time.Now())
 	return session, nil
 }
 

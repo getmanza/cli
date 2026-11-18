@@ -307,7 +307,7 @@ Ready! Listening for all events. Your listen signing secret is whsec_… (^C to 
 - The key needs `webhook_listeners:write`. `--authorizer` also forwards transfer-authorization challenges and needs `transfers:authorize` and an IP allowlist. The challenge still goes to your registered authorizer: the first answer wins, and five bad signatures from any answerer suspend the authorizer for everyone using it.
 - A failed POST prints `<-- [500]` or `<-- [ERR] <reason>` and is not retried. Requests time out after 10 s, and redirects are not followed.
 - Log lines go to stderr. `--format json` prints one line per forwarded event on stdout: `{"event_id","event_type","status","duration_ms"}`, with `status: null` and an `error` when the request failed.
-- ^C closes the session. Sessions last 12 hours; an expired one is renewed (`Session renewed`). Revoking the key or closing the session elsewhere ends the command with exit 1.
+- ^C closes the session. Sessions last 12 hours; at expiry the CLI opens a new one (`Session renewed`), and an event emitted between the two is not forwarded. Revoking the key or closing the session elsewhere ends the command with exit 1.
 
 ## Commands
 

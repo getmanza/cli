@@ -1998,10 +1998,14 @@ test("listen does not follow a redirect from the local server", async () => {
   }
 });
 
-test("listen renews a session when it reaches expires_at", async () => {
+test("listen renews a session when it reaches expires_at, timed by the server's clock", async () => {
   const configHome = await tempConfigHome();
   const capture = await createCapture();
-  const soon = new Date(Date.now() + 1500).toISOString();
+  // The server's clock is years behind this machine's: the session lasts
+  // expires_at minus the response's Date, not until the local clock reads
+  // expires_at (already past here).
+  const date = "Wed, 01 Jan 2020 00:00:00 GMT";
+  const soon = "2020-01-01T00:00:02Z";
   const api = await createListenApi(
     ({ name, res }) => {
       sseOpen(res);
@@ -2012,7 +2016,7 @@ test("listen renews a session when it reaches expires_at", async () => {
         sseClosed(res);
       }
     },
-    { expiresAt: (session) => (session === 1 ? soon : "2099-01-01T00:00:00Z") },
+    { date, expiresAt: (session) => (session === 1 ? soon : "2020-01-02T00:00:00Z") },
   );
 
   try {
@@ -2036,6 +2040,43 @@ test("listen renews a session when it reaches expires_at", async () => {
       [LISTEN_BODY_1, LISTEN_BODY_2],
     );
     assert.equal((result.stderr.match(/Session renewed\n/g) || []).length, 1);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen does not renew a session whose expires_at is already past", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture();
+  const api = await createListenApi(
+    ({ res }) => {
+      sseOpen(res);
+      setTimeout(() => {
+        sseWebhook(res, "1-0", LISTEN_FRAME_1);
+        sseClosed(res);
+      }, 300);
+    },
+    { expiresAt: () => "2001-01-01T00:00:00Z" },
+  );
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", `${capture.baseURL}/hooks`],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+      ],
+    );
+    assert.equal(capture.hits.length, 1);
+    assert.doesNotMatch(result.stderr, /Session renewed/);
   } finally {
     await api.close();
     await capture.close();
@@ -2159,6 +2200,19 @@ test("listen requires --forward-to and explains a 403 on --authorizer", async ()
         `Invalid --forward-to "${bad}". Use an http:// or https:// URL, such as http://localhost:4242/webhooks.\n`,
       );
     }
+    const twice = await runCli(
+      [
+        ...listenApi(api),
+        "listen",
+        "--forward-to",
+        "http://127.0.0.1:1/a",
+        "--forward-to",
+        "http://127.0.0.1:1/b",
+      ],
+      { configHome, reject: false },
+    );
+    assert.equal(twice.code, 1);
+    assert.equal(twice.stderr, "Pass --forward-to once: listen forwards to one URL.\n");
     assert.deepEqual(api.requests, []);
 
     const denied = await runCli(
@@ -2693,7 +2747,7 @@ function listenApi(api) {
 // counts that session's connects from 1.
 async function createListenApi(
   onStream,
-  { createStatus = 201, createBody, expiresAt = () => "2099-01-01T00:00:00Z" } = {},
+  { createStatus = 201, createBody, expiresAt = () => "2099-01-01T00:00:00Z", date } = {},
 ) {
   const requests = [];
   const streams = [];
@@ -2713,6 +2767,7 @@ async function createListenApi(
       }
       sessions += 1;
       const params = JSON.parse(body);
+      if (date) res.setHeader("Date", date);
       sendJSON(
         res,
         {
