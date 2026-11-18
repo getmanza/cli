@@ -37,6 +37,7 @@ type listener struct {
 	s         *sender
 	params    manza.WebhookListenerParams
 	forwardTo string
+	shown     string // forwardTo as logged: its password masked
 	jsonLines bool
 	http      *http.Client
 	forwarded int // events forwarded so far
@@ -53,8 +54,21 @@ const minSessionLifetime = time.Second
 // it forwarded anything, ends the command instead of renewing again.
 const notFoundWindow = 10 * time.Minute
 
-func listen(f flags, config *runConfig, jsonLines bool) error {
+func listen(args []string, f flags, config *runConfig, jsonLines bool) error {
+	// A boolean flag swallows no value: `--authorizer false` would leave
+	// "false" behind as an argument, `--authorizer=false` would still mean true.
+	for _, name := range []string{"authorizer", "print-secret"} {
+		for _, value := range f[name] {
+			if value != true {
+				return cliErrorf("--authorizer and --print-secret take no value: leave the flag out to turn it off.")
+			}
+		}
+	}
+	if len(args) > 0 {
+		return cliErrorf("Unexpected argument \"%s\". Usage: manza listen --forward-to <url> [--events type,type] [--authorizer]", args[0])
+	}
 	printSecret := f.truthy("print-secret")
+	var shown string
 	if !printSecret {
 		if err := requireValue(f.value("forward-to"), "forward URL. Use --forward-to <url>"); err != nil {
 			return err
@@ -62,9 +76,11 @@ func listen(f flags, config *runConfig, jsonLines bool) error {
 		if len(f["forward-to"]) > 1 {
 			return cliErrorf("Pass --forward-to once: listen forwards to one URL.")
 		}
-		if target, err := url.Parse(f.str("forward-to")); err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Host == "" {
+		target, err := url.Parse(f.str("forward-to"))
+		if err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Host == "" {
 			return cliErrorf("Invalid --forward-to \"%s\". Use an http:// or https:// URL, such as http://localhost:4242/webhooks.", f.str("forward-to"))
 		}
+		shown = target.Redacted() // a password in the URL never reaches the log
 	}
 	if config.apiKey == "" {
 		return cliErrorf("Missing API key. Run `manza login`, set MANZA_API_KEY, or pass --api-key.")
@@ -78,6 +94,7 @@ func listen(f flags, config *runConfig, jsonLines bool) error {
 		s:         s,
 		params:    manza.WebhookListenerParams{Events: listenEvents(f), Authorizer: f.truthy("authorizer")},
 		forwardTo: f.str("forward-to"),
+		shown:     shown,
 		jsonLines: jsonLines,
 		http: &http.Client{
 			Timeout:       forwardTimeout,
@@ -264,7 +281,7 @@ func (l *listener) forward(ctx context.Context, secret string, event manza.Liste
 		line.Set("duration_ms", ms)
 		line.Set("error", err.Error())
 	} else {
-		fmt.Fprintf(os.Stderr, "%s  <-- [%d] POST %s (%d ms)\n", clock(), status, l.forwardTo, ms)
+		fmt.Fprintf(os.Stderr, "%s  <-- [%d] POST %s (%d ms)\n", clock(), status, l.shown, ms)
 		line.Set("status", status)
 		line.Set("duration_ms", ms)
 	}

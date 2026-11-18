@@ -1747,7 +1747,10 @@ test("listen forwards each frame byte-for-byte, signed with the listen secret", 
   );
 
   try {
-    await waitFor(() => capture.hits.length === 2, "two forwarded events");
+    await waitFor(
+      () => (run.out.stderr.match(/<-- \[200\]/g) || []).length === 2,
+      "two forwarded events logged",
+    );
     run.child.kill("SIGINT");
     const result = await run.exited;
 
@@ -1983,14 +1986,15 @@ test("listen does not follow a redirect from the local server", async () => {
   });
 
   try {
-    const hook = `${capture.baseURL}/hooks`;
+    const hook = `${capture.baseURL.replace("http://", "http://dev:hunter2@")}/hooks`;
     const result = await startCli([...listenApi(api), "listen", "--forward-to", hook], {
       configHome,
     }).exited;
 
     assert.equal(result.code, 1);
     assert.equal(capture.hits.length, 1);
-    assert.match(result.stderr, / {2}<-- \[302\] POST /);
+    assert.match(result.stderr, / {2}<-- \[302\] POST http:\/\/dev:xxxxx@/);
+    assert.doesNotMatch(result.stderr, /hunter2/);
   } finally {
     await api.close();
     await capture.close();
@@ -2213,6 +2217,22 @@ test("listen requires --forward-to and explains a 403 on --authorizer", async ()
     );
     assert.equal(twice.code, 1);
     assert.equal(twice.stderr, "Pass --forward-to once: listen forwards to one URL.\n");
+
+    for (const args of [
+      ["--authorizer=false", "--forward-to", "http://127.0.0.1:1/a"],
+      ["--authorizer", "false", "--forward-to", "http://127.0.0.1:1/a"],
+      ["--print-secret=true"],
+    ]) {
+      const valued = await runCli([...listenApi(api), "listen", ...args], {
+        configHome,
+        reject: false,
+      });
+      assert.equal(valued.code, 1);
+      assert.match(
+        valued.stderr,
+        /^(--authorizer and --print-secret take no value|Unexpected argument "false")/,
+      );
+    }
     assert.deepEqual(api.requests, []);
 
     const denied = await runCli(
