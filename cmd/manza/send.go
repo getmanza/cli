@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,12 +37,19 @@ type recorder struct {
 	status int
 	header http.Header
 	body   []byte
+	// streamed is set when a server-sent event stream opened (manza listen).
+	streamed bool
 }
 
 func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		return nil, err
+	}
+	// An event stream never ends by itself: hand it on unread.
+	if mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mediaType == "text/event-stream" && resp.StatusCode < 300 {
+		r.status, r.header, r.body, r.streamed = resp.StatusCode, resp.Header, nil, true
+		return resp, nil
 	}
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -255,16 +263,22 @@ func (s *sender) fetch(req *apiRequest, query *object) (any, error) {
 	}
 
 	if err != nil {
-		var connErr *manza.ConnectionError
-		if errors.As(err, &connErr) {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return nil, cliErrorf("Request timed out after %dms", s.config.requestTimeoutMs)
-			}
-			return nil, cliErrorf("Connection failed: %s", connErr.Message)
-		}
-		return nil, err
+		return nil, s.connectionError(ctx, err)
 	}
 	return s.recorder.parsedBody(), nil
+}
+
+// connectionError turns a transport failure of a request made under ctx
+// into the CLI's timeout or connection message; any other error is kept.
+func (s *sender) connectionError(ctx context.Context, err error) error {
+	var connErr *manza.ConnectionError
+	if !errors.As(err, &connErr) {
+		return err
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return cliErrorf("Request timed out after %dms", s.config.requestTimeoutMs)
+	}
+	return cliErrorf("Connection failed: %s", connErr.Message)
 }
 
 // requestQuery is the query actually sent. The SDK list methods sent limit
