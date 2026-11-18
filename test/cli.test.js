@@ -1973,6 +1973,144 @@ test("listen renews an expired session and resumes forwarding", async () => {
   }
 });
 
+test("listen does not follow a redirect from the local server", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture(() => 302);
+  const api = await createListenApi(({ res }) => {
+    sseOpen(res);
+    sseWebhook(res, "1-0", LISTEN_FRAME_1);
+    sseClosed(res);
+  });
+
+  try {
+    const hook = `${capture.baseURL}/hooks`;
+    const result = await startCli([...listenApi(api), "listen", "--forward-to", hook], {
+      configHome,
+    }).exited;
+
+    assert.equal(result.code, 1);
+    assert.equal(capture.hits.length, 1);
+    assert.match(result.stderr, / {2}<-- \[302\] POST /);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen renews a session when it reaches expires_at", async () => {
+  const configHome = await tempConfigHome();
+  const capture = await createCapture();
+  const soon = new Date(Date.now() + 1500).toISOString();
+  const api = await createListenApi(
+    ({ name, res }) => {
+      sseOpen(res);
+      if (name === "wl_1") {
+        sseWebhook(res, "1-0", LISTEN_FRAME_1);
+      } else {
+        sseWebhook(res, "1-0", LISTEN_FRAME_2);
+        sseClosed(res);
+      }
+    },
+    { expiresAt: (session) => (session === 1 ? soon : "2099-01-01T00:00:00Z") },
+  );
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", `${capture.baseURL}/hooks`],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2"],
+      ],
+    );
+    assert.deepEqual(
+      capture.hits.map((hit) => hit.body),
+      [LISTEN_BODY_1, LISTEN_BODY_2],
+    );
+    assert.equal((result.stderr.match(/Session renewed\n/g) || []).length, 1);
+  } finally {
+    await api.close();
+    await capture.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen stops renewing when a renewed session is not found again with nothing forwarded", async () => {
+  const configHome = await tempConfigHome();
+  const notFound = { error: { type: "not_found_error", message: "Listener not found" } };
+  const api = await createListenApi(({ connection, res }) => {
+    if (connection === 1) {
+      sseOpen(res);
+      res.end();
+    } else {
+      sendJSON(res, notFound, 404);
+    }
+  });
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", "http://127.0.0.1:1/hooks"],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.deepEqual(
+      api.requests.map((r) => [r.method, r.url]),
+      [
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_1"],
+        ["POST", "/api/webhook_listeners"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2"],
+        ["GET", "/api/webhook_listeners/stream?name=wl_2"],
+      ],
+    );
+    assert.equal((result.stderr.match(/Session renewed\n/g) || []).length, 1);
+    assert.deepEqual(JSON.parse(result.stderr.trimEnd().split("\n").at(-1)), {
+      ...notFound,
+      status: 404,
+    });
+  } finally {
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+test("listen hides the stream token when the stream connection fails", async () => {
+  const configHome = await tempConfigHome();
+  const api = await createListenApi(({ res }) => {
+    res.socket.destroy();
+  });
+
+  try {
+    const result = await startCli(
+      [...listenApi(api), "listen", "--forward-to", "http://127.0.0.1:1/hooks"],
+      { configHome },
+    ).exited;
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Connection failed: .*\/api\/webhook_listeners\/stream\?…/);
+    assert.doesNotMatch(result.stderr, /name=wl_1/);
+    assert.deepEqual(api.requests.at(-1), {
+      method: "DELETE",
+      url: "/api/webhook_listeners/wl_1",
+      body: "",
+      lastEventId: null,
+    });
+  } finally {
+    await api.close();
+    await rm(configHome, { recursive: true, force: true });
+  }
+});
+
 test("listen --print-secret prints only the secret and closes the session", async () => {
   const configHome = await tempConfigHome();
   const api = await createListenApi(() => {
@@ -2009,6 +2147,18 @@ test("listen requires --forward-to and explains a 403 on --authorizer", async ()
     assert.equal(usage.code, 1);
     assert.equal(usage.stdout, "");
     assert.equal(usage.stderr, "Missing forward URL. Use --forward-to <url>.\n");
+
+    for (const bad of ["localhost:4242/hooks", "not a url", "ftp://127.0.0.1/hooks"]) {
+      const invalid = await runCli([...listenApi(api), "listen", "--forward-to", bad], {
+        configHome,
+        reject: false,
+      });
+      assert.equal(invalid.code, 1);
+      assert.equal(
+        invalid.stderr,
+        `Invalid --forward-to "${bad}". Use an http:// or https:// URL, such as http://localhost:4242/webhooks.\n`,
+      );
+    }
     assert.deepEqual(api.requests, []);
 
     const denied = await runCli(
@@ -2541,7 +2691,10 @@ function listenApi(api) {
 // createListenApi mocks POST/DELETE /api/webhook_listeners and hands each
 // stream connection to onStream({ name, connection, res }); connection
 // counts that session's connects from 1.
-async function createListenApi(onStream, { createStatus = 201, createBody } = {}) {
+async function createListenApi(
+  onStream,
+  { createStatus = 201, createBody, expiresAt = () => "2099-01-01T00:00:00Z" } = {},
+) {
   const requests = [];
   const streams = [];
   let sessions = 0;
@@ -2566,7 +2719,7 @@ async function createListenApi(onStream, { createStatus = 201, createBody } = {}
           id: `wl_${sessions}`,
           events: params.events,
           authorizer: params.authorizer,
-          expires_at: "2026-11-19T04:00:00Z",
+          expires_at: expiresAt(sessions),
           stream_url: `/api/webhook_listeners/stream?name=wl_${sessions}`,
           signing_secret: LISTEN_SECRET,
         },

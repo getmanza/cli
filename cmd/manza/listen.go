@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -38,6 +39,7 @@ type listener struct {
 	forwardTo string
 	jsonLines bool
 	http      *http.Client
+	forwarded int // events forwarded so far
 }
 
 func listen(f flags, config *runConfig, jsonLines bool) error {
@@ -45,6 +47,9 @@ func listen(f flags, config *runConfig, jsonLines bool) error {
 	if !printSecret {
 		if err := requireValue(f.value("forward-to"), "forward URL. Use --forward-to <url>"); err != nil {
 			return err
+		}
+		if target, err := url.Parse(f.str("forward-to")); err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Host == "" {
+			return cliErrorf("Invalid --forward-to \"%s\". Use an http:// or https:// URL, such as http://localhost:4242/webhooks.", f.str("forward-to"))
 		}
 	}
 	if config.apiKey == "" {
@@ -106,39 +111,85 @@ func (l *listener) run(session manza.WebhookListener) error {
 		fmt.Fprintln(os.Stderr, authorizerWarning)
 	}
 
+	renewedAt := -1 // l.forwarded when a not-found last renewed the session
 	for {
 		l.s.recorder.streamed = false
-		err := l.stream(ctx, session)
+		streamCtx, cancel := untilExpiry(ctx, session)
+		err := l.stream(streamCtx, ctx, session)
+		expired := streamCtx.Err() != nil
+		cancel()
 		if ctx.Err() != nil {
 			stop() // a second ^C now kills the process
 			l.close(session)
 			return nil
 		}
+		// The server stops sending to an expired session but may keep its
+		// connection open: renew at expires_at rather than go quiet.
+		if expired {
+			if session, err = l.renew(); err != nil {
+				return err
+			}
+			continue
+		}
 		if err == nil {
 			return cliErrorf("%s", listenerClosed)
 		}
 		// An expired session answers the reconnect with not found. One that
-		// never opened its stream is not renewed: that would loop.
+		// never opened its stream is not renewed, and neither is a renewed
+		// one found missing again before it forwarded anything: either
+		// would loop creating sessions.
 		var apiErr *manza.Error
-		if l.s.recorder.streamed && errors.As(err, &apiErr) && apiErr.Kind == manza.KindNotFound {
-			if session, err = l.create(); err != nil {
+		notFound := errors.As(err, &apiErr) && apiErr.Kind == manza.KindNotFound
+		if notFound && l.s.recorder.streamed && renewedAt != l.forwarded {
+			renewedAt = l.forwarded
+			if session, err = l.renew(); err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, "Session renewed")
 			continue
 		}
+		var connErr *manza.ConnectionError
+		if errors.As(err, &connErr) {
+			// Its message holds the stream URL, whose query is a token.
+			err = cliErrorf("Connection failed: %s", streamQuery.ReplaceAllString(connErr.Message, "?…"))
+		}
 		failure := l.s.handleError(err)
-		l.close(session)
+		if !notFound {
+			l.close(session)
+		}
 		return failure
 	}
 }
 
+var streamQuery = regexp.MustCompile(`\?[^"\s]*`)
+
+// untilExpiry ends the stream at the session's expires_at, when it parses.
+func untilExpiry(ctx context.Context, session manza.WebhookListener) (context.Context, context.CancelFunc) {
+	expiresAt, err := time.Parse(time.RFC3339, session.ExpiresAt)
+	if err != nil {
+		return context.WithCancel(ctx)
+	}
+	return context.WithDeadline(ctx, expiresAt)
+}
+
+func (l *listener) renew() (manza.WebhookListener, error) {
+	session, err := l.create()
+	if err == nil {
+		fmt.Fprintln(os.Stderr, "Session renewed")
+	}
+	return session, err
+}
+
 // stream forwards the session's events until the stream ends: nil when
-// the listener closed or ctx is done, else the SDK's error.
-func (l *listener) stream(ctx context.Context, session manza.WebhookListener) error {
-	for event, err := range l.s.client.WebhookListeners.Stream(ctx, session, manza.WebhookListenerStreamOptions{}) {
+// the listener closed or streamCtx is done, else the SDK's error. Each
+// POST runs under ctx, so a session reaching expires_at mid-POST still
+// finishes it; frames still buffered at ^C are not forwarded.
+func (l *listener) stream(streamCtx, ctx context.Context, session manza.WebhookListener) error {
+	for event, err := range l.s.client.WebhookListeners.Stream(streamCtx, session, manza.WebhookListenerStreamOptions{}) {
 		if err != nil {
 			return err
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 		l.forward(ctx, session.SigningSecret, event)
 	}
@@ -163,8 +214,10 @@ func (l *listener) forward(ctx context.Context, secret string, event manza.Liste
 	started := time.Now()
 	status, err := l.post(ctx, secret, event)
 	if ctx.Err() != nil {
-		return // interrupted mid-POST: shutting down
+		fmt.Fprintf(os.Stderr, "%s  <-- [ERR] interrupted\n", clock())
+		return
 	}
+	l.forwarded++
 	ms := int(time.Since(started).Milliseconds())
 
 	line := newObject()
